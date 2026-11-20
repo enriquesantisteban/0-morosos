@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, Menu, MoreHorizontal, Pencil, Plus, Search, Sparkles, Trash2, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
 import { createExpense, createFloorInvitation, getDashboardData, markExpensePaid, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, submitExpenseRequest, updateExpense, updateFloorDescription, updateFloorName } from '@/app/actions/dashboard'
 import type { getDashboardData as getDashboardDataType } from '@/app/actions/dashboard'
+import { authClient } from '@/lib/auth-client'
 
 type DashboardPayload = Awaited<ReturnType<typeof getDashboardDataType>>
 type Expense = { id: string; title: string; type: string; date: string; person: string; amount: number; initials: string; color: string; createdBy: string; periodStart: string | null; periodEnd: string | null; rentMonth: string | null; note: string | null; invoicePath: string | null; invoiceName: string | null; pendingApproval: boolean; paymentStatus: 'ninguno' | 'pendiente' | 'confirmado' | 'rechazado'; personalShare: number; splitMode: 'igual' | 'partes' | 'importes'; splitValues: Record<string, number>; payments: { memberId: string; name: string; status: 'sin_pagar' | 'pendiente' | 'confirmado' | 'rechazado'; amount: number; parts: number }[] }
@@ -169,6 +170,14 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
     window.location.assign('/acceso')
   }
 
+  async function changeRecoveryEmail() {
+    const email = window.prompt('Correo electrónico para recuperar el acceso')
+    if (!email) return
+    const result = await authClient.changeEmail({ newEmail: email.trim().toLowerCase(), callbackURL: window.location.href })
+    if (result.error) notify(result.error.message || 'No se pudo actualizar el correo')
+    else notify('Te hemos enviado un correo para confirmar la dirección')
+  }
+
   function openExpenseForm() {
     setEditingId(null)
     setInvoiceFile(null)
@@ -276,13 +285,13 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
         </nav>
         <div className="sidebar-bottom">
           <div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><b>Convivir, más fácil.</b><p>Un piso organizado es un piso feliz.</p><button onClick={() => notify('Centro de ayuda: hola@0morosos.es')}>Centro de ayuda <ArrowRight size={13} /></button></div>
-          <div className="profile-menu-wrap"><div className="profile-row"><span className="avatar lilac">{initialData.user.name.slice(0, 2).toUpperCase()}</span><span className="profile-copy"><b>{initialData.user.name}</b><small>@{initialData.user.username || 'usuario'} · {initialData.floor.role === 'admin' ? 'Administrador/a' : 'Miembro'}</small></span><button className="profile-menu-trigger" aria-label="Abrir opciones de cuenta" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button></div>{accountMenuOpen && <div className="account-menu"><button onClick={() => void signOut()}>Cerrar sesión</button></div>}</div>
+          <div className="profile-menu-wrap"><div className="profile-row"><span className="avatar lilac">{initialData.user.name.slice(0, 2).toUpperCase()}</span><span className="profile-copy"><b>{initialData.user.name}</b><small>@{initialData.user.username || 'usuario'} · {initialData.floor.role === 'admin' ? 'Administrador/a' : 'Miembro'}</small></span><button className="profile-menu-trigger" aria-label="Abrir opciones de cuenta" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button></div>{accountMenuOpen && <div className="account-menu"><button onClick={() => void changeRecoveryEmail()}>Cambiar correo de recuperación</button><button onClick={() => void signOut()}>Cerrar sesión</button></div>}</div>
         </div>
       </aside>
       {mobileNav && <button className="mobile-backdrop" aria-label="Cerrar menú" onClick={() => setMobileNav(false)} />}
 
       <section className="main-area">
-        <header className="topbar"><button className="mobile-menu" aria-label="Abrir menú" onClick={() => setMobileNav(true)}><Menu /></button><div className="breadcrumb"><span>{floorName}</span><span className="crumb-slash">/</span><b>{page}</b></div><div className="top-actions"><span className="period-label">{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date())}</span><button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setPage('Notificaciones')}><Bell size={19} /><i /></button><span className="avatar top-avatar lilac">{initialData.user.name.slice(0, 2).toUpperCase()}</span></div></header>
+        <header className="topbar"><button className="mobile-menu" aria-label="Abrir menú" onClick={() => setMobileNav(true)}><Menu /></button><div className="breadcrumb"><span>{floorName}</span><span className="crumb-slash">/</span><b>{page}</b></div><div className="top-actions"><span className="period-label">{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date())}</span><button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setPage('Notificaciones')}><Bell size={19} />{notifications.some((item) => !item.read) && <i />}</button><span className="avatar top-avatar lilac">{initialData.user.name.slice(0, 2).toUpperCase()}</span></div></header>
         <div className="page-content">
           {page === 'Resumen' && <>
             <div className="welcome-row"><div><div className="eyebrow"><span className="status-dot" /> TU PISO, AL DÍA</div><h1>¡Hola, {initialData.user.name.split(' ')[0]}! <Sparkles className="wave" size={20} aria-hidden="true" /></h1><p className="page-subtitle">Así van las cuentas de <b>{floorName}</b> en {monthName}.</p></div><button className="primary-button" onClick={openExpenseForm}><Plus size={17} /> Añadir gasto</button></div>
