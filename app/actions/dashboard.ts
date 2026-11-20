@@ -22,6 +22,31 @@ type ExpenseInput = {
   rentMonth?: string
   invoicePath?: string
   invoiceName?: string
+  splitMode?: 'igual' | 'partes' | 'importes'
+  splitValues?: Record<string, number>
+}
+
+type SplitMode = 'igual' | 'partes' | 'importes'
+
+function validateSplit(total: number, memberIds: string[], mode: SplitMode = 'partes', values: Record<string, number> = {}) {
+  if (!['igual', 'partes', 'importes'].includes(mode)) throw new Error('Elige un tipo de reparto válido.')
+  if (Object.keys(values).some((id) => !memberIds.includes(id))) throw new Error('El reparto contiene un miembro que no pertenece al piso.')
+  const allocations = Object.fromEntries(memberIds.map((id) => [id, mode === 'igual' ? 1 : values[id] ?? (mode === 'importes' ? 0 : 1)]))
+  if (Object.values(allocations).some((amount) => !Number.isFinite(amount) || amount < 0 || amount > 10000000)) throw new Error('Comprueba las partes o importes del reparto.')
+  if (mode === 'partes' && Object.values(allocations).reduce((sum, amount) => sum + amount, 0) <= 0) throw new Error('El reparto debe asignar al menos una parte.')
+  if (mode === 'importes' && Math.abs(Object.values(allocations).reduce((sum, amount) => sum + amount, 0) - total) > 0.009) throw new Error('La suma de los importes debe coincidir con el gasto.')
+  return allocations
+}
+
+function calculateShares(total: number, memberIds: string[], mode: SplitMode = 'partes', allocations: Record<string, number> = {}) {
+  if (mode === 'importes') return Object.fromEntries(memberIds.map((id) => [id, Number((allocations[id] || 0).toFixed(2))]))
+  const weightFor = (id: string) => mode === 'igual' ? 1 : allocations[id] ?? 1
+  const totalParts = memberIds.reduce((sum, id) => sum + weightFor(id), 0)
+  if (totalParts <= 0) return Object.fromEntries(memberIds.map((id) => [id, 0]))
+  const shares = Object.fromEntries(memberIds.map((id) => [id, Number((total * weightFor(id) / totalParts).toFixed(2))]))
+  const lastParticipating = [...memberIds].reverse().find((id) => weightFor(id) > 0)
+  if (lastParticipating) shares[lastParticipating] = Number((shares[lastParticipating] + total - Object.values(shares).reduce((sum, amount) => sum + amount, 0)).toFixed(2))
+  return shares
 }
 
 async function getSessionUser() {
@@ -76,14 +101,15 @@ function validateExpense(input: ExpenseInput) {
 
 export async function getDashboardData() {
   const { user, membership, floor } = await getMembership()
-  const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds, paymentRows, floorInfoRows] = await Promise.all([
+  const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds, paymentRows, floorInfoRows, splitRows] = await Promise.all([
     db.select({ expense: expenses, creator: appUsers.name }).from(expenses).leftJoin(appUsers, eq(expenses.createdBy, appUsers.id)).where(eq(expenses.floorId, floor.id)).orderBy(desc(expenses.date)),
     db.select({ membership: members, username: appUsers.username }).from(members).leftJoin(appUsers, eq(members.userId, appUsers.id)).where(eq(members.floorId, floor.id)).orderBy(desc(members.createdAt)),
     db.select({ request: requests, sender: appUsers.name, expenseTitle: expenses.title }).from(requests).leftJoin(appUsers, eq(requests.sentBy, appUsers.id)).leftJoin(expenses, eq(requests.expenseId, expenses.id)).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'))).orderBy(desc(requests.createdAt)),
     db.select().from(notifications).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id))).orderBy(desc(notifications.createdAt)),
-    db.select({ expenseId: requests.expenseId }).from(requests).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)),
+    db.select({ expenseId: requests.expenseId, proposal: requests.proposal }).from(requests).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)),
     db.select({ entry: history, actor: appUsers.name, expenseTitle: expenses.title }).from(history).leftJoin(appUsers, eq(history.actorId, appUsers.id)).leftJoin(expenses, eq(history.expenseId, expenses.id)).where(and(eq(history.floorId, floor.id), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt)),
     db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, '__floor_info__'), eq(history.action, 'floor_info'))).orderBy(desc(history.createdAt)).limit(1),
+    db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.action, 'reparto'))).orderBy(desc(history.createdAt)),
   ])
   const resolvedPayments = new Set(paymentRows.filter(({ entry }) => entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado').map(({ entry }) => (entry.next as Record<string, unknown> | null)?.requestHistoryId))
   const paymentApprovals = paymentRows.filter(({ entry }) => entry.action === 'pago_pendiente' && !resolvedPayments.has(entry.id)).map(({ entry, actor, expenseTitle }) => ({ id: entry.id, expenseId: entry.expenseId, expenseTitle: expenseTitle || 'Gasto eliminado', memberId: String((entry.next as Record<string, unknown> | null)?.memberId || entry.actorId), memberName: actor || 'Miembro del piso', amount: Number((entry.next as Record<string, unknown> | null)?.amount || 0), createdAt: entry.createdAt }))
@@ -108,10 +134,15 @@ export async function getDashboardData() {
     floor: { id: floor.id, name: floor.name, role: membership.role, description: (floorInfoRows[0]?.next as Record<string, unknown> | null)?.description as string || '' },
     user: { id: user.id, name: user.name, username: 'username' in user ? user.username : null },
     expenses: expenseRows.map(({ expense, creator }) => {
+      const splitEntry = splitRows.find((entry) => entry.expenseId === expense.id)
+      const pendingSplit = pendingAdds.find((request) => request.expenseId === expense.id)?.proposal as { splitMode?: SplitMode; splitValues?: Record<string, number> } | undefined
+      const splitPayload = (splitEntry?.next as { mode?: SplitMode; allocations?: Record<string, number> } | null) || (pendingSplit ? { mode: pendingSplit.splitMode, allocations: pendingSplit.splitValues } : null)
+      const splitMode = splitPayload?.mode || 'igual'
+      const shareAmounts = calculateShares(Number(expense.amount), memberRows.map(({ membership: member }) => member.userId), splitMode, splitPayload?.allocations || {})
       const paymentsForExpense = expensePayments.get(expense.id)
-      const paymentByMember = memberRows.map(({ membership: member }) => ({ memberId: member.userId, name: member.name, status: (paymentsForExpense?.get(member.userId)?.status || 'sin_pagar') as 'sin_pagar' | 'pendiente' | 'confirmado' | 'rechazado', amount: paymentsForExpense?.get(member.userId)?.amount || Number((Number(expense.amount) / Math.max(1, memberRows.length)).toFixed(2)) }))
+      const paymentByMember = memberRows.map(({ membership: member }) => ({ memberId: member.userId, name: member.name, status: (paymentsForExpense?.get(member.userId)?.status || 'sin_pagar') as 'sin_pagar' | 'pendiente' | 'confirmado' | 'rechazado', amount: paymentsForExpense?.get(member.userId)?.amount || shareAmounts[member.userId] || 0, parts: splitPayload?.allocations?.[member.userId] ?? 1 }))
       const personalPayment = paymentsForExpense?.get(user.id)
-      return { ...expense, amount: Number(expense.amount), person: creator || 'Miembro del piso', pendingApproval: pendingAdds.some((request) => request.expenseId === expense.id), paymentStatus: (personalPayment?.status || 'ninguno') as 'ninguno' | 'pendiente' | 'confirmado' | 'rechazado', personalShare: personalPayment?.amount || Number((Number(expense.amount) / Math.max(1, memberRows.length)).toFixed(2)), payments: paymentByMember }
+      return { ...expense, amount: Number(expense.amount), person: creator || 'Miembro del piso', pendingApproval: pendingAdds.some((request) => request.expenseId === expense.id), paymentStatus: (personalPayment?.status || 'ninguno') as 'ninguno' | 'pendiente' | 'confirmado' | 'rechazado', personalShare: personalPayment?.amount || shareAmounts[user.id] || 0, splitMode, splitValues: splitPayload?.allocations || Object.fromEntries(memberRows.map(({ membership: member }) => [member.userId, 1])), payments: paymentByMember }
     }),
     members: memberRows.map(({ membership: item, username }) => ({ ...item, username })),
     requests: requestRows.map(({ request, sender, expenseTitle }) => ({ ...request, sender: sender || 'Miembro del piso', expenseTitle })),
@@ -175,19 +206,24 @@ export async function createExpense(input: ExpenseInput) {
   const context = await getMembership()
   const { user, floor } = context
   const value = validateExpense(input)
+  const memberRows = await db.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
+  const splitMode = input.splitMode || 'igual'
+  const splitValues = validateSplit(value.amount, memberRows.map((member) => member.userId), splitMode, input.splitValues)
+  const splitSnapshot = { mode: splitMode, allocations: splitValues }
   if (value.invoicePath && (!value.invoicePath.startsWith(`facturas/${floor.id}/`) || value.invoicePath.includes('..'))) throw new Error('La factura no pertenece a este piso.')
   if (value.invoiceName && value.invoiceName.length > 120) throw new Error('El nombre de la factura es demasiado largo.')
   const id = randomUUID()
   await db.transaction(async (tx) => {
     await tx.insert(expenses).values({ id, floorId: floor.id, title: value.title, type: value.type, amount: value.amount.toFixed(2), date: value.date, periodStart: value.periodStart || null, periodEnd: value.periodEnd || null, rentMonth: value.rentMonth || null, note: value.note?.trim() || null, createdBy: user.id, invoicePath: value.invoicePath || null, invoiceName: value.invoiceName || null })
     if (context.membership.role !== 'admin' && floor.adminId !== user.id) {
-      const proposal = { title: value.title, type: value.type, amount: value.amount, date: value.date, note: value.note || '', periodStart: value.periodStart || '', periodEnd: value.periodEnd || '', rentMonth: value.rentMonth || '', _newExpense: true }
+      const proposal = { title: value.title, type: value.type, amount: value.amount, date: value.date, note: value.note || '', periodStart: value.periodStart || '', periodEnd: value.periodEnd || '', rentMonth: value.rentMonth || '', splitMode, splitValues, _newExpense: true }
       await tx.insert(requests).values({ id: randomUUID(), floorId: floor.id, expenseId: id, sentBy: user.id, reason: 'Nuevo gasto', proposal, status: 'pendiente' })
       const admins = await tx.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.role, 'admin')))
       if (admins.length) await tx.insert(notifications).values(admins.map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nuevo gasto pendiente', message: `${value.title}: ${value.amount.toFixed(2)} €` })))
       return
     }
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'creado', next: value })
+    await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'reparto', next: splitSnapshot })
     const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
     const rows = recipients.filter((row) => row.userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nuevo gasto', message: `${value.title}: ${value.amount.toFixed(2)} €` }))
     if (rows.length) await tx.insert(notifications).values(rows)
@@ -199,6 +235,9 @@ export async function createExpense(input: ExpenseInput) {
 export async function updateExpense(id: string, input: ExpenseInput) {
   const { user, floor } = await requireAdmin()
   const value = validateExpense(input)
+  const memberRows = await db.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
+  const splitMode = input.splitMode || 'igual'
+  const splitValues = validateSplit(value.amount, memberRows.map((member) => member.userId), splitMode, input.splitValues)
   if (value.invoicePath && (!value.invoicePath.startsWith(`facturas/${floor.id}/`) || value.invoicePath.includes('..'))) throw new Error('La factura no pertenece a este piso.')
   const [previous] = await db.select().from(expenses).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id))).limit(1)
   if (!previous) throw new Error('No encontramos ese gasto en tu piso.')
@@ -218,6 +257,7 @@ export async function updateExpense(id: string, input: ExpenseInput) {
   await db.transaction(async (tx) => {
     await tx.update(expenses).set(next).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id)))
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'editado', previous, next })
+    await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'reparto', next: { mode: splitMode, allocations: splitValues } })
     const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
     const rows = recipients.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Gasto actualizado', message: value.title }))
     if (rows.length) await tx.insert(notifications).values(rows)
@@ -269,6 +309,7 @@ export async function resolveExpenseRequest(id: string, decision: 'aprobada' | '
         if (!current) throw new Error('El gasto asociado ya no existe.')
         const proposal = pending.proposal as Partial<ExpenseInput>
         await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: pending.expenseId, actorId: pending.sentBy, action: 'creado', previous: null, next: proposal })
+        await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: pending.expenseId, actorId: pending.sentBy, action: 'reparto', next: { mode: proposal.splitMode || 'igual', allocations: proposal.splitValues || {} } })
       } else {
       const [current] = await tx.select().from(expenses).where(and(eq(expenses.id, pending.expenseId), eq(expenses.floorId, floor.id))).limit(1)
       if (!current) throw new Error('El gasto asociado ya no existe.')
@@ -323,8 +364,11 @@ export async function markExpensePaid(expenseId: string) {
     const resolution = paymentEvents.find((event) => (event.action === 'pago_confirmado' || event.action === 'pago_rechazado') && (event.next as Record<string, unknown> | null)?.requestHistoryId === previous.id)
     if (!resolution || resolution.action === 'pago_confirmado') throw new Error('Ya hay un pago pendiente de revisión o confirmado para este gasto.')
   }
-  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(members).where(eq(members.floorId, floor.id))
-  const amount = Number((Number(expense.amount) / Math.max(1, count)).toFixed(2))
+  const memberRows = await db.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
+  const [splitEntry] = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), eq(history.action, 'reparto'))).orderBy(desc(history.createdAt)).limit(1)
+  const splitPayload = splitEntry?.next as { mode?: SplitMode; allocations?: Record<string, number> } | null
+  const amount = calculateShares(Number(expense.amount), memberRows.map((member) => member.userId), splitPayload?.mode || 'igual', splitPayload?.allocations || {})[user.id] || 0
+  if (amount <= 0) throw new Error('Este gasto no te asigna ninguna parte.')
   await db.transaction(async (tx) => {
     if (isAdmin) {
       await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_confirmado', next: { memberId: user.id, amount, direct: true } })
