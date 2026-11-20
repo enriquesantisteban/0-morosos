@@ -30,6 +30,7 @@ export const pool = new Pool({ connectionString, max: 5, ssl: connectionString.i
 
 export const auth = betterAuth({
   database: pool,
+  basePath: '/api/auth',
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL ?? (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_PROJECT_PRODUCTION_URL
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
