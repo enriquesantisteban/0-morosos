@@ -35,3 +35,15 @@ cd 0-morosos
 # 4. Arranca el servidor de desarrollo
 [npm run dev]
 ```
+
+## Base de datos en Vercel
+
+La primera instalación (o una base de datos vacía) necesita crear las tablas de autenticación y de la aplicación. En la terminal local, copia `DATABASE_URL` desde **Vercel → Project → Settings → Environment Variables** para el entorno que estás reparando y ejecuta:
+
+```bash
+pnpm db:migrate
+```
+
+La migración `drizzle/0000_initial.sql` es repetible y no borra datos. No pegues ni guardes la URL de conexión en el repositorio. Después, vuelve a desplegar el proyecto.
+
+Configura en Vercel, como mínimo, `DATABASE_URL`, `BETTER_AUTH_SECRET` (secreto aleatorio largo) y `BETTER_AUTH_URL` (origen público canónico, por ejemplo `https://tu-dominio.com`). Aplica las variables al entorno del despliegue afectado y crea un nuevo deployment.

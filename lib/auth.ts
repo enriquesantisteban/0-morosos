@@ -1,20 +1,11 @@
 import { betterAuth } from 'better-auth'
 import { username } from 'better-auth/plugins'
-import { createHash } from 'node:crypto'
 import { Pool } from 'pg'
 
 const connectionString = process.env.DATABASE_URL
 if (!connectionString) throw new Error('DATABASE_URL is required')
-const googleClientId = process.env.GOOGLE_CLIENT_ID
-const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
 const resendApiKey = process.env.RESEND_API_KEY
 const emailFrom = process.env.EMAIL_FROM
-
-function googleUsername(email: string) {
-  const localPart = email.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '').replace(/^[^a-z0-9]+/, '').slice(0, 15) || 'google'
-  const suffix = createHash('sha256').update(email.toLowerCase()).digest('hex').slice(0, 8)
-  return `${localPart}-${suffix}`
-}
 
 async function sendEmail({ to, subject, text }: { to: string; subject: string; text: string }) {
   if (!resendApiKey || !emailFrom) throw new Error('El envío de correos no está configurado.')
@@ -56,24 +47,6 @@ export const auth = betterAuth({
   user: { changeEmail: { enabled: true } },
   account: { accountLinking: { enabled: false } },
   plugins: [username({ displayUsername: false, minUsernameLength: 3, maxUsernameLength: 24, usernameValidator: (value) => /^[a-z0-9][a-z0-9._-]{2,23}$/.test(value) })],
-  socialProviders: googleClientId && googleClientSecret ? {
-    google: {
-      clientId: googleClientId,
-      clientSecret: googleClientSecret,
-      prompt: 'select_account',
-      requireEmailVerification: true,
-    },
-  } : undefined,
-  databaseHooks: {
-    user: {
-      create: {
-        before: async (user) => {
-          if ((user as typeof user & { username?: string }).username) return
-          return { data: { ...user, username: googleUsername(user.email) } }
-        },
-      },
-    },
-  },
   trustedOrigins: [
     'http://localhost:3000',
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
