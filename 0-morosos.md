@@ -1,4 +1,4 @@
-```text
+## Prompt
 Crea desde cero una aplicación web llamada **0 morosos** para gestionar los gastos compartidos de pisos de estudiantes. No reutilices ni dependas de una aplicación existente: crea una experiencia nueva, con diseño visual, navegación, componentes y pantallas propios.
 
 ## Diseño y experiencia
@@ -87,8 +87,24 @@ Mantén un historial por gasto que muestre qué cambió, quién realizó la acci
 
 
 
+## MEJORAS
+[ ] Fecha del gasto, en vez de un calendario, un desplegable para elegir el mes y el año.
+[ ] Cuando le doy a detalle del gasto, me aparece en formato JSON.
+[ ] Quiero en el resumen, poder elegir el mes
+[ ] Poder editar el nombre del piso, que no sea genérico a "Mi piso"
+[ ] El miembro podrá añadir gastos, pero se quedará en modo pendiente hasta que lo acepte el administrador, tal y como se hace para editar un gasto.
 
-## [POSIBLE MEJORA] 
-- Que el admin pueda añadir el contrato del piso y sea visible para todos los usuarios en un apartado especial dentro de su perfil.
-- Cada perfil de usuario podrá ser personalizable en color, añadir foto suya, poner su nombre, apellidos.
-```
+
+
+
+## 0-MOROSOS v2
+[ ] Que el admin pueda añadir el contrato del piso y sea visible para todos los usuarios en un apartado especial dentro de su perfil.
+[ ] Cada perfil de usuario podrá ser personalizable en color, añadir foto suya, poner su nombre, apellidos.
+
+
+
+
+
+## FUNCIONAMIENTO
+
+- Quién se registra primero, es el administrador del piso.

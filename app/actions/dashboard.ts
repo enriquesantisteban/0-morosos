@@ -4,7 +4,7 @@ import { del } from '@vercel/blob'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { appUsers, expenses, floors, history, invitations, members, notifications, requests } from '@/lib/db/schema'
-import { and, desc, eq, gt, isNull } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
@@ -76,16 +76,17 @@ function validateExpense(input: ExpenseInput) {
 
 export async function getDashboardData() {
   const { user, membership, floor } = await getMembership()
-  const [expenseRows, memberRows, requestRows, notificationRows] = await Promise.all([
+  const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds] = await Promise.all([
     db.select({ expense: expenses, creator: appUsers.name }).from(expenses).leftJoin(appUsers, eq(expenses.createdBy, appUsers.id)).where(eq(expenses.floorId, floor.id)).orderBy(desc(expenses.date)),
     db.select({ membership: members, username: appUsers.username }).from(members).leftJoin(appUsers, eq(members.userId, appUsers.id)).where(eq(members.floorId, floor.id)).orderBy(desc(members.createdAt)),
     db.select({ request: requests, sender: appUsers.name, expenseTitle: expenses.title }).from(requests).leftJoin(appUsers, eq(requests.sentBy, appUsers.id)).leftJoin(expenses, eq(requests.expenseId, expenses.id)).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'))).orderBy(desc(requests.createdAt)),
     db.select().from(notifications).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id))).orderBy(desc(notifications.createdAt)),
+    db.select({ expenseId: requests.expenseId }).from(requests).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)),
   ])
   return {
     floor: { id: floor.id, name: floor.name, role: membership.role },
     user: { id: user.id, name: user.name, username: 'username' in user ? user.username : null },
-    expenses: expenseRows.map(({ expense, creator }) => ({ ...expense, amount: Number(expense.amount), person: creator || 'Miembro del piso' })),
+    expenses: expenseRows.filter(({ expense }) => !pendingAdds.some((request) => request.expenseId === expense.id)).map(({ expense, creator }) => ({ ...expense, amount: Number(expense.amount), person: creator || 'Miembro del piso' })),
     members: memberRows.map(({ membership: item, username }) => ({ ...item, username })),
     requests: requestRows.map(({ request, sender, expenseTitle }) => ({ ...request, sender: sender || 'Miembro del piso', expenseTitle })),
     notifications: notificationRows,
@@ -150,13 +151,21 @@ async function notifyFloor(floorId: string, actorId: string, title: string, mess
 }
 
 export async function createExpense(input: ExpenseInput) {
-  const { user, floor } = await requireAdmin()
+  const context = await getMembership()
+  const { user, floor } = context
   const value = validateExpense(input)
   if (value.invoicePath && (!value.invoicePath.startsWith(`facturas/${floor.id}/`) || value.invoicePath.includes('..'))) throw new Error('La factura no pertenece a este piso.')
   if (value.invoiceName && value.invoiceName.length > 120) throw new Error('El nombre de la factura es demasiado largo.')
   const id = randomUUID()
   await db.transaction(async (tx) => {
     await tx.insert(expenses).values({ id, floorId: floor.id, title: value.title, type: value.type, amount: value.amount.toFixed(2), date: value.date, periodStart: value.periodStart || null, periodEnd: value.periodEnd || null, rentMonth: value.rentMonth || null, note: value.note?.trim() || null, createdBy: user.id, invoicePath: value.invoicePath || null, invoiceName: value.invoiceName || null })
+    if (context.membership.role !== 'admin' && floor.adminId !== user.id) {
+      const proposal = { title: value.title, type: value.type, amount: value.amount, date: value.date, note: value.note || '', periodStart: value.periodStart || '', periodEnd: value.periodEnd || '', rentMonth: value.rentMonth || '', _newExpense: true }
+      await tx.insert(requests).values({ id: randomUUID(), floorId: floor.id, expenseId: id, sentBy: user.id, reason: 'Nuevo gasto', proposal, status: 'pendiente' })
+      const admins = await tx.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.role, 'admin')))
+      if (admins.length) await tx.insert(notifications).values(admins.map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nuevo gasto pendiente', message: `${value.title}: ${value.amount.toFixed(2)} €` })))
+      return
+    }
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'creado', next: value })
     const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
     const rows = recipients.filter((row) => row.userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nuevo gasto', message: `${value.title}: ${value.amount.toFixed(2)} €` }))
@@ -232,7 +241,14 @@ export async function resolveExpenseRequest(id: string, decision: 'aprobada' | '
   const [pending] = await db.select().from(requests).where(and(eq(requests.id, id), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'))).limit(1)
   if (!pending) throw new Error('La solicitud ya no está pendiente o no pertenece a tu piso.')
   await db.transaction(async (tx) => {
+    const isNewExpense = (pending.proposal as Partial<ExpenseInput> & { _newExpense?: boolean })._newExpense === true
     if (decision === 'aprobada') {
+      if (isNewExpense) {
+        const [current] = await tx.select().from(expenses).where(and(eq(expenses.id, pending.expenseId), eq(expenses.floorId, floor.id))).limit(1)
+        if (!current) throw new Error('El gasto asociado ya no existe.')
+        const proposal = pending.proposal as Partial<ExpenseInput>
+        await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: pending.expenseId, actorId: pending.sentBy, action: 'creado', previous: null, next: proposal })
+      } else {
       const [current] = await tx.select().from(expenses).where(and(eq(expenses.id, pending.expenseId), eq(expenses.floorId, floor.id))).limit(1)
       if (!current) throw new Error('El gasto asociado ya no existe.')
       const proposal = pending.proposal as Partial<ExpenseInput>
@@ -247,10 +263,20 @@ export async function resolveExpenseRequest(id: string, decision: 'aprobada' | '
       if (typeof proposal.rentMonth === 'string' && /^\d{4}-\d{2}$/.test(proposal.rentMonth)) updates.rentMonth = proposal.rentMonth
       await tx.update(expenses).set(updates).where(and(eq(expenses.id, pending.expenseId), eq(expenses.floorId, floor.id)))
       await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: pending.expenseId, actorId: user.id, action: 'solicitud_aprobada', previous: current, next: proposal })
+      }
     }
+    if (decision === 'rechazada' && isNewExpense) await tx.delete(expenses).where(and(eq(expenses.id, pending.expenseId), eq(expenses.floorId, floor.id)))
     await tx.update(requests).set({ status: decision, resolvedBy: user.id, resolvedAt: new Date() }).where(and(eq(requests.id, id), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente')))
     await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: pending.sentBy, title: decision === 'aprobada' ? 'Solicitud aprobada' : 'Solicitud rechazada', message: pending.reason })
   })
+  revalidatePath('/')
+}
+
+export async function updateFloorName(name: string) {
+  const { floor } = await requireAdmin()
+  const clean = name.trim()
+  if (!clean || clean.length > 60) throw new Error('El nombre debe tener entre 1 y 60 caracteres.')
+  await db.update(floors).set({ name: clean }).where(eq(floors.id, floor.id))
   revalidatePath('/')
 }
 
