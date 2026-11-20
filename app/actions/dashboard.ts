@@ -67,7 +67,7 @@ async function getMembership() {
   const floorName = 'Mi piso'
   await db.transaction(async (tx) => {
     await tx.insert(floors).values({ id: floorId, name: floorName, adminId: user.id })
-    await tx.insert(members).values({ id: randomUUID(), floorId, userId: user.id, email: user.email, name: user.name || 'Administrador', role: 'admin' })
+    await tx.insert(members).values({ id: randomUUID(), floorId, userId: user.id, email: user.email, name: user.name || 'Administrador/a', role: 'admin' })
   })
   const [membership] = await db.select().from(members).where(and(eq(members.floorId, floorId), eq(members.userId, user.id))).limit(1)
   const [floor] = await db.select().from(floors).where(eq(floors.id, floorId)).limit(1)
@@ -83,7 +83,7 @@ async function getFloor(id: string) {
 
 async function requireAdmin() {
   const context = await getMembership()
-  if (context.membership.role !== 'admin' && context.floor.adminId !== context.user.id) throw new Error('Solo la persona administradora puede realizar esta acción.')
+  if (context.membership.role !== 'admin' && context.floor.adminId !== context.user.id) throw new Error('Solo la administración del piso puede realizar esta acción.')
   return context
 }
 
@@ -165,7 +165,7 @@ export async function removeFloorMember(memberId: string) {
   if (!memberId || memberId.length > 128) throw new Error('El miembro indicado no es válido.')
   const [target] = await db.select().from(members).where(and(eq(members.id, memberId), eq(members.floorId, floor.id))).limit(1)
   if (!target) throw new Error('No encontramos a esa persona en tu piso.')
-  if (target.userId === user.id || target.role === 'admin') throw new Error('No puedes eliminar a la persona administradora del piso.')
+  if (target.userId === user.id || target.role === 'admin') throw new Error('No puedes eliminar a quien administra el piso.')
   await db.transaction(async (tx) => {
     await tx.delete(members).where(and(eq(members.id, memberId), eq(members.floorId, floor.id), eq(members.userId, target.userId)))
     await tx.delete(notifications).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, target.userId)))

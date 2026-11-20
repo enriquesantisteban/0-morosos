@@ -26,7 +26,7 @@ export default function AccessPage() {
     const invitationToken = new URLSearchParams(window.location.search).get('invitacion')
     if (mode === 'signup' && invitationToken && !(await validateFloorInvitation(invitationToken))) {
       setLoading(false)
-      setError('La invitación ha caducado o ya se utilizó. Pide un enlace nuevo a la persona administradora.')
+      setError('La invitación ha caducado o ya se utilizó. Pide un enlace nuevo a la administración del piso.')
       return
     }
     const email = `${normalizedUsername}@usuarios.0morosos.invalid`
