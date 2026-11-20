@@ -88,12 +88,15 @@ Mantén un historial por gasto que muestre qué cambió, quién realizó la acci
 
 
 ## MEJORAS
-[ ] Fecha del gasto, en vez de un calendario, un desplegable para elegir el mes y el año.
-[ ] Cuando le doy a detalle del gasto, me aparece en formato JSON.
-[ ] Quiero en el resumen, poder elegir el mes
-[ ] Poder editar el nombre del piso, que no sea genérico a "Mi piso"
-[ ] El miembro podrá añadir gastos, pero se quedará en modo pendiente hasta que lo acepte el administrador, tal y como se hace para editar un gasto.
-
+[x] Fecha del gasto, en vez de un calendario, un desplegable para elegir el mes y el año.
+[x] Cuando le doy a detalle del gasto, me aparece en formato JSON.
+[x] Quiero en el resumen, poder elegir el mes
+[x] Poder editar el nombre del piso, que no sea genérico a "Mi piso"
+[x] El miembro podrá añadir gastos, pero se quedará en modo pendiente hasta que lo acepte el administrador, tal y como se hace para editar un gasto.
+[ ] Que cada miembro pueda poner como pagado su parte del gasto, y el administrador lo acepte como que así ha sido.
+[ ] Poder poner una descripción del piso, alguna novedad, como poner la contraseña del wifi...
+[ ] Al añadir el gasto, que se quede a parte de en Solicitudes, se quede en Todos los gastos, pero con otro color pendiente de aprobación para que se diferencie de los demás.
+[ ] Para salir del panel, para cerrar sesión, que esté más claro, porque ahora le doy a mi foto o a los 3 puntos y se sale. Quiero que pueda pulsarle sobre los 3 puntos y haya una opción de Cerrar Sesión.
 
 
 

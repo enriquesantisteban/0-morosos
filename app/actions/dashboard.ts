@@ -4,7 +4,7 @@ import { del } from '@vercel/blob'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { appUsers, expenses, floors, history, invitations, members, notifications, requests } from '@/lib/db/schema'
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
@@ -76,19 +76,31 @@ function validateExpense(input: ExpenseInput) {
 
 export async function getDashboardData() {
   const { user, membership, floor } = await getMembership()
-  const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds] = await Promise.all([
+  const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds, paymentRows, floorInfoRows] = await Promise.all([
     db.select({ expense: expenses, creator: appUsers.name }).from(expenses).leftJoin(appUsers, eq(expenses.createdBy, appUsers.id)).where(eq(expenses.floorId, floor.id)).orderBy(desc(expenses.date)),
     db.select({ membership: members, username: appUsers.username }).from(members).leftJoin(appUsers, eq(members.userId, appUsers.id)).where(eq(members.floorId, floor.id)).orderBy(desc(members.createdAt)),
     db.select({ request: requests, sender: appUsers.name, expenseTitle: expenses.title }).from(requests).leftJoin(appUsers, eq(requests.sentBy, appUsers.id)).leftJoin(expenses, eq(requests.expenseId, expenses.id)).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'))).orderBy(desc(requests.createdAt)),
     db.select().from(notifications).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id))).orderBy(desc(notifications.createdAt)),
     db.select({ expenseId: requests.expenseId }).from(requests).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)),
+    db.select({ entry: history, actor: appUsers.name, expenseTitle: expenses.title }).from(history).leftJoin(appUsers, eq(history.actorId, appUsers.id)).leftJoin(expenses, eq(history.expenseId, expenses.id)).where(and(eq(history.floorId, floor.id), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt)),
+    db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, '__floor_info__'), eq(history.action, 'floor_info'))).orderBy(desc(history.createdAt)).limit(1),
   ])
+  const resolvedPayments = new Set(paymentRows.filter(({ entry }) => entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado').map(({ entry }) => (entry.next as Record<string, unknown> | null)?.requestHistoryId))
+  const paymentApprovals = paymentRows.filter(({ entry }) => entry.action === 'pago_pendiente' && !resolvedPayments.has(entry.id)).map(({ entry, actor, expenseTitle }) => ({ id: entry.id, expenseId: entry.expenseId, expenseTitle: expenseTitle || 'Gasto eliminado', memberId: String((entry.next as Record<string, unknown> | null)?.memberId || entry.actorId), memberName: actor || 'Miembro del piso', amount: Number((entry.next as Record<string, unknown> | null)?.amount || 0), createdAt: entry.createdAt }))
+  const ownPayments = paymentRows.filter(({ entry }) => entry.action === 'pago_pendiente' && (entry.next as Record<string, unknown> | null)?.memberId === user.id)
+  const expensePayments = new Map<string, { status: 'pendiente' | 'confirmado' | 'rechazado'; amount: number }>()
+  for (const { entry } of ownPayments) {
+    if (expensePayments.has(entry.expenseId)) continue
+    const resolution = paymentRows.find(({ entry: resolved }) => (resolved.action === 'pago_confirmado' || resolved.action === 'pago_rechazado') && (resolved.next as Record<string, unknown> | null)?.requestHistoryId === entry.id)
+    expensePayments.set(entry.expenseId, { status: !resolution ? 'pendiente' : resolution.entry.action === 'pago_confirmado' ? 'confirmado' : 'rechazado', amount: Number((entry.next as Record<string, unknown> | null)?.amount || 0) })
+  }
   return {
-    floor: { id: floor.id, name: floor.name, role: membership.role },
+    floor: { id: floor.id, name: floor.name, role: membership.role, description: (floorInfoRows[0]?.next as Record<string, unknown> | null)?.description as string || '' },
     user: { id: user.id, name: user.name, username: 'username' in user ? user.username : null },
-    expenses: expenseRows.filter(({ expense }) => !pendingAdds.some((request) => request.expenseId === expense.id)).map(({ expense, creator }) => ({ ...expense, amount: Number(expense.amount), person: creator || 'Miembro del piso' })),
+    expenses: expenseRows.map(({ expense, creator }) => ({ ...expense, amount: Number(expense.amount), person: creator || 'Miembro del piso', pendingApproval: pendingAdds.some((request) => request.expenseId === expense.id), paymentStatus: expensePayments.get(expense.id)?.status || 'ninguno', personalShare: expensePayments.get(expense.id)?.amount || Number((Number(expense.amount) / Math.max(1, memberRows.length)).toFixed(2)) })),
     members: memberRows.map(({ membership: item, username }) => ({ ...item, username })),
     requests: requestRows.map(({ request, sender, expenseTitle }) => ({ ...request, sender: sender || 'Miembro del piso', expenseTitle })),
+    paymentApprovals,
     notifications: notificationRows,
   }
 }
@@ -277,6 +289,53 @@ export async function updateFloorName(name: string) {
   const clean = name.trim()
   if (!clean || clean.length > 60) throw new Error('El nombre debe tener entre 1 y 60 caracteres.')
   await db.update(floors).set({ name: clean }).where(eq(floors.id, floor.id))
+  revalidatePath('/')
+}
+
+export async function updateFloorDescription(description: string) {
+  const { user, floor } = await requireAdmin()
+  const clean = description.trim()
+  if (clean.length > 1200) throw new Error('La descripción no puede superar los 1.200 caracteres.')
+  await db.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: '__floor_info__', actorId: user.id, action: 'floor_info', next: { description: clean } })
+  revalidatePath('/')
+}
+
+export async function markExpensePaid(expenseId: string) {
+  const { user, floor } = await getMembership()
+  const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.floorId, floor.id))).limit(1)
+  if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
+  const [pendingApproval] = await db.select({ id: requests.id }).from(requests).where(and(eq(requests.expenseId, expenseId), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)).limit(1)
+  if (pendingApproval) throw new Error('Espera a que se apruebe el gasto antes de indicar el pago.')
+  const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt))
+  const previous = paymentEvents.find((event) => event.action === 'pago_pendiente' && (event.next as Record<string, unknown> | null)?.memberId === user.id)
+  if (previous) {
+    const resolution = paymentEvents.find((event) => (event.action === 'pago_confirmado' || event.action === 'pago_rechazado') && (event.next as Record<string, unknown> | null)?.requestHistoryId === previous.id)
+    if (!resolution || resolution.action === 'pago_confirmado') throw new Error('Ya hay un pago pendiente de revisión o confirmado para este gasto.')
+  }
+  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(members).where(eq(members.floorId, floor.id))
+  const amount = Number((Number(expense.amount) / Math.max(1, count)).toFixed(2))
+  await db.transaction(async (tx) => {
+    await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_pendiente', next: { memberId: user.id, amount } })
+    const admins = await tx.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.role, 'admin')))
+    const rows = admins.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Pago pendiente de confirmar', message: `${user.name}: ${amount.toFixed(2)} € · ${expense.title}` }))
+    if (rows.length) await tx.insert(notifications).values(rows)
+  })
+  revalidatePath('/')
+}
+
+export async function resolvePayment(id: string, decision: 'confirmado' | 'rechazado') {
+  const { user, floor } = await requireAdmin()
+  const [payment] = await db.select().from(history).where(and(eq(history.id, id), eq(history.floorId, floor.id), eq(history.action, 'pago_pendiente'))).limit(1)
+  if (!payment) throw new Error('No encontramos ese pago pendiente.')
+  const existing = await db.select().from(history).where(and(eq(history.floorId, floor.id), inArray(history.action, ['pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt))
+  if (existing.some(({ next }) => (next as Record<string, unknown> | null)?.requestHistoryId === id)) throw new Error('Este pago ya se ha revisado.')
+  const payload = payment.next as Record<string, unknown> | null
+  const memberId = String(payload?.memberId || payment.actorId)
+  const amount = Number(payload?.amount || 0)
+  await db.transaction(async (tx) => {
+    await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: payment.expenseId, actorId: user.id, action: decision === 'confirmado' ? 'pago_confirmado' : 'pago_rechazado', previous: payment.next, next: { requestHistoryId: id, memberId, amount } })
+    await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: memberId, title: decision === 'confirmado' ? 'Pago confirmado' : 'Pago rechazado', message: decision === 'confirmado' ? `Se ha confirmado tu parte de ${amount.toFixed(2)} €.` : 'La administración no ha podido confirmar el pago. Puedes volver a marcarlo cuando se haya realizado.' })
+  })
   revalidatePath('/')
 }
 
