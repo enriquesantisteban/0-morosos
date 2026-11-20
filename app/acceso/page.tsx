@@ -50,10 +50,11 @@ export default function AccessPage() {
       const result = await authClient.signIn.social({ provider: 'google', callbackURL })
       if (!result.error) return
       setLoading(false)
-      setError(result.error.message || `Google rechazó el inicio${result.error.code ? ` (${result.error.code})` : ''}. Comprueba GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en el entorno de Vercel de este despliegue.`)
-    } catch {
+      const diagnostics = [result.error.code, result.error.status ? `HTTP ${result.error.status}` : ''].filter(Boolean).join(' · ')
+      setError(result.error.message || `Google rechazó el inicio${diagnostics ? ` (${diagnostics})` : ''}. Comprueba las credenciales de Google en el entorno de Vercel de este despliegue.`)
+    } catch (error) {
       setLoading(false)
-      setError('No se pudo conectar con la autenticación. Comprueba GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en el entorno de Vercel de este despliegue.')
+      setError(`No se pudo conectar con la autenticación${error instanceof Error ? `: ${error.message}` : ''}. Comprueba las credenciales de Google en Vercel.`)
     }
   }
 
