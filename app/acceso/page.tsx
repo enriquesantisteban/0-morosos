@@ -78,7 +78,10 @@ export default function AccessPage() {
       : await authClient.signUp.email({ email: email.trim().toLowerCase(), password, name: name.trim(), username: normalizedUsername, callbackURL: '/' })
     if (result.error) {
       setLoading(false)
-      setError(mode === 'signin' ? 'El usuario o la contraseña no son correctos.' : result.error.message ?? 'No se pudo crear la cuenta. Comprueba el correo y que el nombre de usuario esté disponible.')
+      const details = [result.error.code, result.error.status ? `HTTP ${result.error.status}` : ''].filter(Boolean).join(' · ')
+      setError(mode === 'signin'
+        ? 'El usuario o la contraseña no son correctos.'
+        : result.error.message || `No se pudo crear la cuenta${details ? ` (${details})` : ''}. Comprueba el correo y que el nombre de usuario esté disponible.`)
       return
     }
     if (invitationToken) {
