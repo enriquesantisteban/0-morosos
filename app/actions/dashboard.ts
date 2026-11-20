@@ -87,17 +87,32 @@ export async function getDashboardData() {
   ])
   const resolvedPayments = new Set(paymentRows.filter(({ entry }) => entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado').map(({ entry }) => (entry.next as Record<string, unknown> | null)?.requestHistoryId))
   const paymentApprovals = paymentRows.filter(({ entry }) => entry.action === 'pago_pendiente' && !resolvedPayments.has(entry.id)).map(({ entry, actor, expenseTitle }) => ({ id: entry.id, expenseId: entry.expenseId, expenseTitle: expenseTitle || 'Gasto eliminado', memberId: String((entry.next as Record<string, unknown> | null)?.memberId || entry.actorId), memberName: actor || 'Miembro del piso', amount: Number((entry.next as Record<string, unknown> | null)?.amount || 0), createdAt: entry.createdAt }))
-  const ownPayments = paymentRows.filter(({ entry }) => entry.action === 'pago_pendiente' && (entry.next as Record<string, unknown> | null)?.memberId === user.id)
-  const expensePayments = new Map<string, { status: 'pendiente' | 'confirmado' | 'rechazado'; amount: number }>()
-  for (const { entry } of ownPayments) {
-    if (expensePayments.has(entry.expenseId)) continue
-    const resolution = paymentRows.find(({ entry: resolved }) => (resolved.action === 'pago_confirmado' || resolved.action === 'pago_rechazado') && (resolved.next as Record<string, unknown> | null)?.requestHistoryId === entry.id)
-    expensePayments.set(entry.expenseId, { status: !resolution ? 'pendiente' : resolution.entry.action === 'pago_confirmado' ? 'confirmado' : 'rechazado', amount: Number((entry.next as Record<string, unknown> | null)?.amount || 0) })
+  const resolutionFor = (id: string) => paymentRows.find(({ entry }) => (entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado') && (entry.next as Record<string, unknown> | null)?.requestHistoryId === id)?.entry
+  const expensePayments = new Map<string, Map<string, { status: 'pendiente' | 'confirmado' | 'rechazado'; amount: number }>>()
+  for (const { entry } of paymentRows) {
+    const payload = entry.next as Record<string, unknown> | null
+    if (entry.action === 'pago_pendiente') {
+      if (resolutionFor(entry.id)) continue
+      const memberId = String(payload?.memberId || entry.actorId)
+      const paymentsForExpense = expensePayments.get(entry.expenseId) || new Map()
+      if (!paymentsForExpense.has(memberId)) paymentsForExpense.set(memberId, { status: 'pendiente', amount: Number(payload?.amount || 0) })
+      expensePayments.set(entry.expenseId, paymentsForExpense)
+    } else if (entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado') {
+      const memberId = String(payload?.memberId || entry.actorId)
+      const paymentsForExpense = expensePayments.get(entry.expenseId) || new Map()
+      if (!paymentsForExpense.has(memberId)) paymentsForExpense.set(memberId, { status: entry.action === 'pago_confirmado' ? 'confirmado' : 'rechazado', amount: Number(payload?.amount || 0) })
+      expensePayments.set(entry.expenseId, paymentsForExpense)
+    }
   }
   return {
     floor: { id: floor.id, name: floor.name, role: membership.role, description: (floorInfoRows[0]?.next as Record<string, unknown> | null)?.description as string || '' },
     user: { id: user.id, name: user.name, username: 'username' in user ? user.username : null },
-    expenses: expenseRows.map(({ expense, creator }) => ({ ...expense, amount: Number(expense.amount), person: creator || 'Miembro del piso', pendingApproval: pendingAdds.some((request) => request.expenseId === expense.id), paymentStatus: expensePayments.get(expense.id)?.status || 'ninguno', personalShare: expensePayments.get(expense.id)?.amount || Number((Number(expense.amount) / Math.max(1, memberRows.length)).toFixed(2)) })),
+    expenses: expenseRows.map(({ expense, creator }) => {
+      const paymentsForExpense = expensePayments.get(expense.id)
+      const paymentByMember = memberRows.map(({ membership: member }) => ({ memberId: member.userId, name: member.name, status: (paymentsForExpense?.get(member.userId)?.status || 'sin_pagar') as 'sin_pagar' | 'pendiente' | 'confirmado' | 'rechazado', amount: paymentsForExpense?.get(member.userId)?.amount || Number((Number(expense.amount) / Math.max(1, memberRows.length)).toFixed(2)) }))
+      const personalPayment = paymentsForExpense?.get(user.id)
+      return { ...expense, amount: Number(expense.amount), person: creator || 'Miembro del piso', pendingApproval: pendingAdds.some((request) => request.expenseId === expense.id), paymentStatus: (personalPayment?.status || 'ninguno') as 'ninguno' | 'pendiente' | 'confirmado' | 'rechazado', personalShare: personalPayment?.amount || Number((Number(expense.amount) / Math.max(1, memberRows.length)).toFixed(2)), payments: paymentByMember }
+    }),
     members: memberRows.map(({ membership: item, username }) => ({ ...item, username })),
     requests: requestRows.map(({ request, sender, expenseTitle }) => ({ ...request, sender: sender || 'Miembro del piso', expenseTitle })),
     paymentApprovals,
@@ -154,12 +169,6 @@ export async function getExpenseDetails(id: string) {
   if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
   const entries = await db.select({ entry: history, actor: appUsers.name }).from(history).leftJoin(appUsers, eq(history.actorId, appUsers.id)).where(and(eq(history.expenseId, id), eq(history.floorId, floor.id))).orderBy(desc(history.createdAt))
   return { expense: { ...expense, amount: Number(expense.amount) }, history: entries.map(({ entry, actor }) => ({ ...entry, actor: actor || 'Miembro del piso' })) }
-}
-
-async function notifyFloor(floorId: string, actorId: string, title: string, message: string) {
-  const recipients = await db.select({ userId: members.userId }).from(members).where(eq(members.floorId, floorId))
-  if (!recipients.length) return
-  await db.insert(notifications).values(recipients.filter(({ userId }) => userId !== actorId).map(({ userId }) => ({ id: randomUUID(), floorId, userId, title, message })))
 }
 
 export async function createExpense(input: ExpenseInput) {
@@ -301,12 +310,14 @@ export async function updateFloorDescription(description: string) {
 }
 
 export async function markExpensePaid(expenseId: string) {
-  const { user, floor } = await getMembership()
+  const { user, floor, membership } = await getMembership()
   const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.floorId, floor.id))).limit(1)
   if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
   const [pendingApproval] = await db.select({ id: requests.id }).from(requests).where(and(eq(requests.expenseId, expenseId), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)).limit(1)
   if (pendingApproval) throw new Error('Espera a que se apruebe el gasto antes de indicar el pago.')
   const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt))
+  const isAdmin = membership.role === 'admin' || floor.adminId === user.id
+  if (isAdmin && paymentEvents.some((event) => event.action === 'pago_confirmado' && (event.next as Record<string, unknown> | null)?.memberId === user.id && !(event.next as Record<string, unknown> | null)?.requestHistoryId)) throw new Error('Tu parte ya aparece como pagada.')
   const previous = paymentEvents.find((event) => event.action === 'pago_pendiente' && (event.next as Record<string, unknown> | null)?.memberId === user.id)
   if (previous) {
     const resolution = paymentEvents.find((event) => (event.action === 'pago_confirmado' || event.action === 'pago_rechazado') && (event.next as Record<string, unknown> | null)?.requestHistoryId === previous.id)
@@ -315,10 +326,17 @@ export async function markExpensePaid(expenseId: string) {
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(members).where(eq(members.floorId, floor.id))
   const amount = Number((Number(expense.amount) / Math.max(1, count)).toFixed(2))
   await db.transaction(async (tx) => {
-    await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_pendiente', next: { memberId: user.id, amount } })
-    const admins = await tx.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.role, 'admin')))
-    const rows = admins.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Pago pendiente de confirmar', message: `${user.name}: ${amount.toFixed(2)} € · ${expense.title}` }))
-    if (rows.length) await tx.insert(notifications).values(rows)
+    if (isAdmin) {
+      await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_confirmado', next: { memberId: user.id, amount, direct: true } })
+      const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
+      const rows = recipients.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Pago registrado', message: `${user.name}: ${amount.toFixed(2)} € · ${expense.title}` }))
+      if (rows.length) await tx.insert(notifications).values(rows)
+    } else {
+      await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_pendiente', next: { memberId: user.id, amount } })
+      const admins = await tx.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.role, 'admin')))
+      const rows = admins.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Pago pendiente de confirmar', message: `${user.name}: ${amount.toFixed(2)} € · ${expense.title}` }))
+      if (rows.length) await tx.insert(notifications).values(rows)
+    }
   })
   revalidatePath('/')
 }
