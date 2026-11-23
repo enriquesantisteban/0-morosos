@@ -30,9 +30,16 @@ export default function AccessPage() {
       setError('La invitación ha caducado o ya se utilizó. Pide un enlace nuevo a la administración del piso.')
       return
     }
-    const result = mode === 'signin'
-      ? await authClient.signIn.username({ username: normalizedUsername, password, callbackURL: '/' })
-      : await authClient.signUp.email({ email: email.trim().toLowerCase(), password, name: name.trim(), username: normalizedUsername, callbackURL: '/' })
+    let result
+    try {
+      result = mode === 'signin'
+        ? await authClient.signIn.username({ username: normalizedUsername, password, callbackURL: '/' })
+        : await authClient.signUp.email({ email: email.trim().toLowerCase(), password, name: name.trim(), username: normalizedUsername, callbackURL: '/' })
+    } catch (requestError) {
+      setLoading(false)
+      setError(`No se pudo conectar con el servicio de autenticación${requestError instanceof Error ? `: ${requestError.message}` : '.'}`)
+      return
+    }
     if (result.error) {
       setLoading(false)
       const details = [result.error.code, result.error.status ? `HTTP ${result.error.status}` : ''].filter(Boolean).join(' · ')
