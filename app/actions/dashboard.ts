@@ -447,9 +447,6 @@ export async function markExpensePaid(expenseId: string) {
   await db.transaction(async (tx) => {
     if (isAdmin) {
       await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_confirmado', next: { memberId: user.id, amount, direct: true } })
-      const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
-      const rows = recipients.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Pago registrado', message: `${user.name}: ${amount.toFixed(2)} € · ${expense.title}` }))
-      if (rows.length) await tx.insert(notifications).values(rows)
     } else {
       await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_pendiente', next: { memberId: user.id, amount } })
       const admins = await tx.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.role, 'admin')))
@@ -514,7 +511,7 @@ export async function markMemberExpensePaid(expenseId: string, memberId: string)
 
   await db.transaction(async (tx) => {
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_confirmado', previous: unresolvedRequestId ? paymentEvents.find((event) => event.id === unresolvedRequestId)?.next : null, next: { ...(unresolvedRequestId ? { requestHistoryId: unresolvedRequestId } : { direct: true }), memberId, amount } })
-    await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: memberId, title: 'Pago registrado', message: `La administración ha marcado tu parte de ${amount.toFixed(2)} € como pagada · ${expense.title}` })
+    if (memberId !== user.id) await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: memberId, title: 'Pago registrado', message: `La administración ha marcado tu parte de ${amount.toFixed(2)} € como pagada · ${expense.title}` })
   })
   revalidatePath('/')
 }
@@ -547,7 +544,7 @@ export async function revertMemberExpensePaid(expenseId: string, memberId: strin
   const amount = Number((latestMemberEvent?.next as Record<string, unknown> | null)?.amount || 0)
   await db.transaction(async (tx) => {
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_revertido', previous: latestMemberEvent?.next, next: { memberId, amount } })
-    await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: memberId, title: 'Pago actualizado', message: `La administración ha marcado tu parte de ${amount.toFixed(2)} € como no pagada · ${expense.title}` })
+    if (memberId !== user.id) await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: memberId, title: 'Pago actualizado', message: `La administración ha marcado tu parte de ${amount.toFixed(2)} € como no pagada · ${expense.title}` })
   })
   revalidatePath('/')
 }
