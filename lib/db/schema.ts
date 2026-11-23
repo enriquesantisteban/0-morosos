@@ -79,9 +79,21 @@ export const invitations = pgTable('invitaciones', {
   createdAt: timestamp('createdAt', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('invitaciones_floor_idx').on(table.floorId, table.createdAt)])
 
+export const floorContracts = pgTable('contratos_piso', {
+  id: text('id').primaryKey(),
+  floorId: text('pisoId').notNull().unique(),
+  blobPath: text('blobPath').notNull(),
+  fileName: text('nombreArchivo').notNull(),
+  visibleTo: jsonb('visibleTo').notNull().$type<string[]>().default([]),
+  uploadedBy: text('subidoPor').notNull(),
+  updatedAt: timestamp('updatedAt', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const appUsers = pgTable('user', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   email: text('email').notNull(),
   username: text('username'),
+  image: text('image'),
+  updatedAt: timestamp('updatedAt', { withTimezone: true }).notNull().defaultNow(),
 })

@@ -148,3 +148,13 @@ CREATE TABLE IF NOT EXISTS "invitaciones" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "invitaciones_tokenHash_unique" ON "invitaciones" ("tokenHash");
 CREATE INDEX IF NOT EXISTS "invitaciones_floor_idx" ON "invitaciones" ("pisoId", "createdAt");
+
+CREATE TABLE IF NOT EXISTS "contratos_piso" (
+  "id" text PRIMARY KEY NOT NULL,
+  "pisoId" text NOT NULL UNIQUE,
+  "blobPath" text NOT NULL,
+  "nombreArchivo" text NOT NULL,
+  "visibleTo" jsonb NOT NULL DEFAULT '[]'::jsonb,
+  "subidoPor" text NOT NULL,
+  "updatedAt" timestamptz NOT NULL DEFAULT now()
+);

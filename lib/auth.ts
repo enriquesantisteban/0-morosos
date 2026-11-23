@@ -53,7 +53,6 @@ export const auth = betterAuth({
       text: `Hola ${user.name},\n\nConfirma tu correo y guarda este como dirección de recuperación siguiendo este enlace:\n${url}`,
     }),
   },
-  user: { changeEmail: { enabled: true } },
   account: {
     accountLinking: {
       enabled: true,

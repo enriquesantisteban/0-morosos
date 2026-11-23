@@ -3,7 +3,7 @@
 import { del } from '@vercel/blob'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { appUsers, expenses, floors, history, invitations, members, notifications, requests } from '@/lib/db/schema'
+import { appUsers, expenses, floorContracts, floors, history, invitations, members, notifications, requests } from '@/lib/db/schema'
 import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
@@ -101,7 +101,7 @@ function validateExpense(input: ExpenseInput) {
 
 export async function getDashboardData() {
   const { user, membership, floor } = await getMembership()
-  const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds, paymentRows, floorInfoRows, splitRows] = await Promise.all([
+  const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds, paymentRows, floorInfoRows, splitRows, contractRows] = await Promise.all([
     db.select({ expense: expenses, creator: appUsers.name }).from(expenses).leftJoin(appUsers, eq(expenses.createdBy, appUsers.id)).where(eq(expenses.floorId, floor.id)).orderBy(desc(expenses.date)),
     db.select({ membership: members, username: appUsers.username }).from(members).leftJoin(appUsers, eq(members.userId, appUsers.id)).where(eq(members.floorId, floor.id)).orderBy(desc(members.createdAt)),
     db.select({ request: requests, sender: appUsers.name, expenseTitle: expenses.title }).from(requests).leftJoin(appUsers, eq(requests.sentBy, appUsers.id)).leftJoin(expenses, eq(requests.expenseId, expenses.id)).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'))).orderBy(desc(requests.createdAt)),
@@ -110,10 +110,14 @@ export async function getDashboardData() {
     db.select({ entry: history, actor: appUsers.name, expenseTitle: expenses.title }).from(history).leftJoin(appUsers, eq(history.actorId, appUsers.id)).leftJoin(expenses, eq(history.expenseId, expenses.id)).where(and(eq(history.floorId, floor.id), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt)),
     db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, '__floor_info__'), eq(history.action, 'floor_info'))).orderBy(desc(history.createdAt)).limit(1),
     db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.action, 'reparto'))).orderBy(desc(history.createdAt)),
+    db.select().from(floorContracts).where(eq(floorContracts.floorId, floor.id)).limit(1),
   ])
   const resolvedPayments = new Set(paymentRows.filter(({ entry }) => entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado').map(({ entry }) => (entry.next as Record<string, unknown> | null)?.requestHistoryId))
   const paymentApprovals = paymentRows.filter(({ entry }) => entry.action === 'pago_pendiente' && !resolvedPayments.has(entry.id)).map(({ entry, actor, expenseTitle }) => ({ id: entry.id, expenseId: entry.expenseId, expenseTitle: expenseTitle || 'Gasto eliminado', memberId: String((entry.next as Record<string, unknown> | null)?.memberId || entry.actorId), memberName: actor || 'Miembro del piso', amount: Number((entry.next as Record<string, unknown> | null)?.amount || 0), createdAt: entry.createdAt }))
   const resolutionFor = (id: string) => paymentRows.find(({ entry }) => (entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado') && (entry.next as Record<string, unknown> | null)?.requestHistoryId === id)?.entry
+  const contract = contractRows[0]
+  const isAdmin = membership.role === 'admin' || floor.adminId === user.id
+  const canViewContract = Boolean(contract && (isAdmin || contract.visibleTo.includes(user.id)))
   const expensePayments = new Map<string, Map<string, { status: 'pendiente' | 'confirmado' | 'rechazado'; amount: number }>>()
   for (const { entry } of paymentRows) {
     const payload = entry.next as Record<string, unknown> | null
@@ -132,7 +136,9 @@ export async function getDashboardData() {
   }
   return {
     floor: { id: floor.id, name: floor.name, role: membership.role, description: (floorInfoRows[0]?.next as Record<string, unknown> | null)?.description as string || '' },
-    user: { id: user.id, name: user.name, username: 'username' in user ? user.username : null },
+    user: { id: user.id, name: user.name, username: 'username' in user ? user.username : null, image: user.image || null },
+    contract: contract && canViewContract ? { fileName: contract.fileName, updatedAt: contract.updatedAt, visibleTo: isAdmin ? contract.visibleTo : [] } : null,
+    contractExists: Boolean(contract),
     expenses: expenseRows.map(({ expense, creator }) => {
       const splitEntry = splitRows.find((entry) => entry.expenseId === expense.id)
       const pendingSplit = pendingAdds.find((request) => request.expenseId === expense.id)?.proposal as { splitMode?: SplitMode; splitValues?: Record<string, number> } | undefined
@@ -149,6 +155,30 @@ export async function getDashboardData() {
     paymentApprovals,
     notifications: notificationRows,
   }
+}
+
+export async function updateContractVisibility(userIds: string[]) {
+  const { user, floor } = await requireAdmin()
+  if (!Array.isArray(userIds) || userIds.length > 100 || userIds.some((id) => typeof id !== 'string' || id.length > 128)) throw new Error('La lista de permisos no es válida.')
+  const visibleTo = [...new Set(userIds)]
+  const floorMembers = await db.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
+  const allowedIds = new Set(floorMembers.map((member) => member.userId))
+  if (visibleTo.some((id) => !allowedIds.has(id))) throw new Error('Solo puedes compartir el contrato con miembros de tu piso.')
+  const [contract] = await db.select({ id: floorContracts.id }).from(floorContracts).where(eq(floorContracts.floorId, floor.id)).limit(1)
+  if (!contract) throw new Error('Sube primero el contrato del piso.')
+  await db.update(floorContracts).set({ visibleTo, updatedAt: new Date() }).where(eq(floorContracts.floorId, floor.id))
+  revalidatePath('/')
+}
+
+export async function updateOwnProfileName(value: string) {
+  const user = await getSessionUser()
+  const name = value.trim()
+  if (!name || name.length > 60) throw new Error('El nombre debe tener entre 1 y 60 caracteres.')
+  await db.transaction(async (tx) => {
+    await tx.update(appUsers).set({ name, updatedAt: new Date() }).where(eq(appUsers.id, user.id))
+    await tx.update(members).set({ name }).where(eq(members.userId, user.id))
+  })
+  revalidatePath('/')
 }
 
 const invitationHash = (token: string) => createHash('sha256').update(token).digest('hex')

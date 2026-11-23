@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, Menu, MoreHorizontal, Pencil, Plus, Search, Sparkles, Trash2, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
-import { createExpense, createFloorInvitation, getDashboardData, markExpensePaid, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, submitExpenseRequest, updateExpense, updateFloorDescription, updateFloorName } from '@/app/actions/dashboard'
+import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Camera, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, Menu, MoreHorizontal, Pencil, Plus, Search, Sparkles, Trash2, Upload, UserRound, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
+import { createExpense, createFloorInvitation, getDashboardData, markExpensePaid, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, submitExpenseRequest, updateContractVisibility, updateExpense, updateFloorDescription, updateFloorName, updateOwnProfileName } from '@/app/actions/dashboard'
 import type { getDashboardData as getDashboardDataType } from '@/app/actions/dashboard'
 import { authClient } from '@/lib/auth-client'
 
@@ -26,6 +26,17 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   const [floorDescription, setFloorDescription] = useState(initialData.floor.description)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [googleLinked, setGoogleLinked] = useState(false)
+  const [profileName, setProfileName] = useState(initialData.user.name)
+  const [profileImage, setProfileImage] = useState(initialData.user.image)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [contractFile, setContractFile] = useState<File | null>(null)
+  const [contractSaving, setContractSaving] = useState(false)
+  const [contract, setContract] = useState(initialData.contract)
+  const [contractExists, setContractExists] = useState(initialData.contractExists)
+  const [contractVisibleTo, setContractVisibleTo] = useState(initialData.contract?.visibleTo || [])
+  const profileImageUrl = profileImage?.startsWith('perfiles/')
+    ? `/api/perfil/foto?userId=${encodeURIComponent(initialData.user.id)}&v=${encodeURIComponent(profileImage)}`
+    : profileImage
   const [reportYear, setReportYear] = useState(new Date().getFullYear())
   const [expenses, setExpenses] = useState<Expense[]>(mapExpenses(initialData.expenses))
   const [members, setMembers] = useState(initialData.members)
@@ -118,6 +129,11 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
     setNotifications(fresh.notifications)
     setPaymentApprovals(fresh.paymentApprovals)
     setFloorDescription(fresh.floor.description)
+    setProfileName(fresh.user.name)
+    setProfileImage(fresh.user.image)
+    setContract(fresh.contract)
+    setContractExists(fresh.contractExists)
+    setContractVisibleTo(fresh.contract?.visibleTo || [])
     setRequests(fresh.requests.map((request, index) => ({ ...request, title: request.expenseTitle || 'Gasto eliminado', detail: request.reason === "Nuevo gasto" ? `${request.expenseTitle || "Gasto"} · ${euro(Number(request.proposal.amount))}` : request.reason, name: request.sender, initials: request.sender.split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase(), color: colors[index % colors.length], time: new Date(request.createdAt).toLocaleDateString('es-ES') })))
   }
 
@@ -195,14 +211,6 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
     window.location.assign('/acceso')
   }
 
-  async function changeRecoveryEmail() {
-    const email = window.prompt('Correo electrónico para recuperar el acceso')
-    if (!email) return
-    const result = await authClient.changeEmail({ newEmail: email.trim().toLowerCase(), callbackURL: window.location.href })
-    if (result.error) notify(result.error.message || 'No se pudo actualizar el correo')
-    else notify('Te hemos enviado un correo para confirmar la dirección')
-  }
-
   async function linkGoogleAccount() {
     setAccountMenuOpen(false)
     const callbackURL = new URL(window.location.href)
@@ -218,6 +226,61 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
       if (result.error) notify(result.error.message || 'No se pudo iniciar la vinculación con Google')
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo conectar con Google')
+    }
+  }
+
+  async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setProfileSaving(true)
+    try {
+      await updateOwnProfileName(profileName)
+      await refreshDashboard()
+      notify('Perfil actualizado')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo actualizar el perfil')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
+  async function uploadProfilePhoto(file: File | null) {
+    if (!file) return
+    setProfileSaving(true)
+    try {
+      const body = new FormData()
+      body.set('file', file)
+      const response = await fetch('/api/perfil/foto', { method: 'POST', body })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'No se pudo guardar la foto')
+      setProfileImage(result.image)
+      notify('Foto de perfil actualizada')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo guardar la foto')
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
+  async function saveContract() {
+    setContractSaving(true)
+    try {
+      if (contractFile) {
+        const body = new FormData()
+        body.set('file', contractFile)
+        body.set('visibleTo', JSON.stringify(contractVisibleTo.filter((id) => id !== initialData.user.id)))
+        const response = await fetch('/api/contrato', { method: 'POST', body })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || 'No se pudo guardar el contrato')
+        setContractFile(null)
+      } else {
+        await updateContractVisibility(contractVisibleTo.filter((id) => id !== initialData.user.id))
+      }
+      await refreshDashboard()
+      notify(contractFile ? 'Contrato subido y permisos guardados' : 'Permisos del contrato actualizados')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo guardar el contrato')
+    } finally {
+      setContractSaving(false)
     }
   }
 
@@ -324,20 +387,40 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
           <div className="nav-caption">GESTIÓN</div>
           {navItems.map(({ label, icon: Icon }) => <button key={label} onClick={() => { setPage(label); setMobileNav(false) }} className={`nav-link ${page === label ? 'active' : ''}`}><Icon size={18} strokeWidth={1.8} /><span>{label}</span>{((label === 'Solicitudes' && initialData.floor.role === 'admin' && (requests.length > 0 || paymentApprovals.length > 0)) || (label === 'Notificaciones' && notifications.some((item) => !item.read))) && <span className="nav-badge">{label === 'Solicitudes' ? requests.length + paymentApprovals.length : notifications.filter((item) => !item.read).length}</span>}</button>)}
           <div className="nav-caption nav-caption-lower">HERRAMIENTAS</div>
-          <button className={`nav-link ${page === 'Informes' ? 'active' : ''}`} onClick={() => setPage('Informes')}><FileText size={18} strokeWidth={1.8} /><span>Informes</span></button>
+          <button className={`nav-link ${page === 'Contrato' ? 'active' : ''}`} onClick={() => { setPage('Contrato'); setMobileNav(false) }}><FileText size={18} strokeWidth={1.8} /><span>Contrato</span></button>
+          <button className={`nav-link ${page === 'Perfil' ? 'active' : ''}`} onClick={() => { setPage('Perfil'); setMobileNav(false) }}><UserRound size={18} strokeWidth={1.8} /><span>Perfil</span></button>
+          <button className={`nav-link ${page === 'Informes' ? 'active' : ''}`} onClick={() => { setPage('Informes'); setMobileNav(false) }}><ArrowDownToLine size={18} strokeWidth={1.8} /><span>Informes</span></button>
         </nav>
         <div className="sidebar-bottom">
           <div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><b>Convivir, más fácil.</b><p>Un piso organizado es un piso feliz.</p><button onClick={() => notify('Centro de ayuda: hola@0morosos.es')}>Centro de ayuda <ArrowRight size={13} /></button></div>
-          <div className="profile-menu-wrap"><div className="profile-row"><span className="avatar lilac">{initialData.user.name.slice(0, 2).toUpperCase()}</span><span className="profile-copy"><b>{initialData.user.name}</b><small>@{initialData.user.username || 'usuario'} · {initialData.floor.role === 'admin' ? 'Administrador/a' : 'Miembro'}</small></span><button className="profile-menu-trigger" aria-label="Abrir opciones de cuenta" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button></div>{accountMenuOpen && <div className="account-menu"><button onClick={() => void changeRecoveryEmail()}>Cambiar correo de recuperación</button><button onClick={() => void linkGoogleAccount()} disabled={googleLinked}>{googleLinked ? 'Google ya está vinculado' : 'Vincular cuenta de Google'}</button><button onClick={() => void signOut()}>Cerrar sesión</button></div>}</div>
+          <div className="profile-menu-wrap"><div className="profile-row"><span className="avatar lilac">{profileImageUrl ? <img src={profileImageUrl} alt=""/> : profileName.slice(0, 2).toUpperCase()}</span><span className="profile-copy"><b>{profileName}</b><small>@{initialData.user.username || 'usuario'} · {initialData.floor.role === 'admin' ? 'Administrador/a' : 'Miembro'}</small></span><button className="profile-menu-trigger" aria-label="Abrir opciones de cuenta" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button></div>{accountMenuOpen && <div className="account-menu"><button onClick={() => void linkGoogleAccount()} disabled={googleLinked}>{googleLinked ? 'Google ya está vinculado' : 'Vincular cuenta de Google'}</button><button onClick={() => void signOut()}>Cerrar sesión</button></div>}</div>
         </div>
       </aside>
       {mobileNav && <button className="mobile-backdrop" aria-label="Cerrar menú" onClick={() => setMobileNav(false)} />}
 
       <section className="main-area">
-        <header className="topbar"><button className="mobile-menu" aria-label="Abrir menú" onClick={() => setMobileNav(true)}><Menu /></button><div className="breadcrumb"><span>{floorName}</span><span className="crumb-slash">/</span><b>{page}</b></div><div className="top-actions"><span className="period-label">{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date())}</span><button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setPage('Notificaciones')}><Bell size={19} />{notifications.some((item) => !item.read) && <i />}</button><span className="avatar top-avatar lilac">{initialData.user.name.slice(0, 2).toUpperCase()}</span></div></header>
+        <header className="topbar"><button className="mobile-menu" aria-label="Abrir menú" onClick={() => setMobileNav(true)}><Menu /></button><div className="breadcrumb"><span>{floorName}</span><span className="crumb-slash">/</span><b>{page}</b></div><div className="top-actions"><span className="period-label">{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date())}</span><button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setPage('Notificaciones')}><Bell size={19} />{notifications.some((item) => !item.read) && <i />}</button><span className="avatar top-avatar lilac">{profileImageUrl ? <img src={profileImageUrl} alt=""/> : profileName.slice(0, 2).toUpperCase()}</span></div></header>
         <div className="page-content">
+          {page === 'Contrato' && <>
+            <div className="welcome-row"><div><div className="eyebrow"><span className="status-dot" /> DOCUMENTACIÓN DEL PISO</div><h1>Contrato</h1><p className="page-subtitle">Consulta el contrato de alquiler y los permisos para compartirlo.</p></div></div>
+            {initialData.floor.role === 'admin' && <section className="panel contract-manager">
+              <div className="panel-heading"><div><h2>Personas con acceso</h2><p>Elige qué miembros pueden abrir el contrato. Tú, como administrador/a, siempre tendrás acceso.</p></div></div>
+              <div className="contract-member-list">{members.map((member) => <label className="contract-member-option" key={member.userId}><input type="checkbox" checked={member.userId === initialData.user.id || contractVisibleTo.includes(member.userId)} disabled={member.userId === initialData.user.id} onChange={(event) => setContractVisibleTo((current) => event.target.checked ? [...new Set([...current, member.userId])] : current.filter((id) => id !== member.userId))}/><span><b>{member.name}</b><small>{member.userId === initialData.user.id ? 'Administración · acceso permanente' : member.email}</small></span></label>)}</div>
+              <div className="contract-upload-row"><label className="contract-file-picker"><Upload size={16}/><span>{contractFile?.name || (contract ? 'Elegir un nuevo PDF para reemplazarlo' : 'Seleccionar contrato en PDF')}</span><input type="file" accept="application/pdf,.pdf" onChange={(event) => setContractFile(event.currentTarget.files?.[0] ?? null)}/></label><button className="primary-button" onClick={() => void saveContract()} disabled={contractSaving || (!contractFile && !contract)}>{contractSaving ? 'Guardando…' : contractFile ? 'Subir contrato y guardar permisos' : 'Guardar permisos'}</button></div>
+              <p className="field-hint">PDF · máximo 4 MB. El archivo se guarda de forma privada.</p>
+            </section>}
+            {contract ? <section className="panel contract-document"><span className="contract-document-icon"><FileText size={24}/></span><div className="contract-document-copy"><span className="summary-label">CONTRATO DEL PISO</span><h2>{contract.fileName}</h2><p>Actualizado el {new Date(contract.updatedAt).toLocaleDateString('es-ES')}</p></div><a className="outline-button" href="/api/contrato" target="_blank" rel="noreferrer">Abrir contrato <ArrowRight size={14}/></a></section>
+              : <section className="panel contract-empty"><span className="contract-document-icon"><FileText size={24}/></span><h2>{contractExists ? 'El contrato aún no está compartido contigo' : 'Todavía no hay un contrato disponible'}</h2><p>{initialData.floor.role === 'admin' ? 'Sube el PDF y selecciona qué miembros del piso podrán verlo.' : 'Pide a la administración del piso que comparta el contrato contigo.'}</p></section>}
+          </>}
+          {page === 'Perfil' && <>
+            <div className="welcome-row"><div><div className="eyebrow"><span className="status-dot" /> TU CUENTA</div><h1>Perfil</h1><p className="page-subtitle">Tu nombre y foto para que tus compañeros te reconozcan.</p></div></div>
+            <section className="panel profile-editor">
+              <div className="profile-photo-column"><div className="profile-avatar-large">{profileImageUrl ? <img src={profileImageUrl} alt={`Foto de ${profileName}`}/> : profileName.slice(0, 2).toUpperCase()}</div><label className="outline-button profile-photo-button"><Camera size={15}/> Cambiar foto<input type="file" accept="image/jpeg,image/png,image/webp" disabled={profileSaving} onChange={(event) => { void uploadProfilePhoto(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = '' }}/></label><small>JPG, PNG o WebP · máximo 5 MB</small></div>
+              <form className="profile-name-form" onSubmit={saveProfile}><div><h2>Tu información</h2><p>Este nombre aparece en la actividad y en la lista del piso.</p></div><label>Nombre<input value={profileName} onChange={(event) => setProfileName(event.target.value)} required maxLength={60} autoComplete="name"/></label><button className="primary-button" type="submit" disabled={profileSaving}><Check size={16}/>{profileSaving ? 'Guardando…' : 'Guardar nombre'}</button></form>
+            </section>
+          </>}
           {page === 'Resumen' && <>
-            <div className="welcome-row"><div><div className="eyebrow"><span className="status-dot" /> TU PISO, AL DÍA</div><h1>¡Hola, {initialData.user.name.split(' ')[0]}! <Sparkles className="wave" size={20} aria-hidden="true" /></h1><p className="page-subtitle">Así van las cuentas de <b>{floorName}</b> en {monthName}.</p></div><button className="primary-button" onClick={openExpenseForm}><Plus size={17} /> Añadir gasto</button></div>
+            <div className="welcome-row"><div><div className="eyebrow"><span className="status-dot" /> TU PISO, AL DÍA</div><h1>¡Hola, {profileName.split(' ')[0]}! <Sparkles className="wave" size={20} aria-hidden="true" /></h1><p className="page-subtitle">Así van las cuentas de <b>{floorName}</b> en {monthName}.</p></div><button className="primary-button" onClick={openExpenseForm}><Plus size={17} /> Añadir gasto</button></div>
             <section className="panel floor-info-card"><div><span className="summary-label">INFORMACIÓN DEL PISO</span><p>{floorDescription || (initialData.floor.role === 'admin' ? 'Añade una descripción, novedades o datos útiles como la contraseña del wifi.' : 'La administración aún no ha añadido información.')}</p></div>{initialData.floor.role === 'admin' && <button className="outline-button" onClick={() => void editFloorDescription()}>{floorDescription ? 'Editar información' : 'Añadir información'}</button>}</section>
             <div className="summary-period"><label>Mes del resumen<select aria-label="Mes del resumen" value={selectedMonth.slice(5, 7)} onChange={(event) => setSelectedMonth(`${selectedMonth.slice(0, 4)}-${event.target.value}`)}>{Array.from({ length: 12 }, (_, index) => <option key={index} value={String(index + 1).padStart(2, '0')}>{new Intl.DateTimeFormat('es-ES', { month: 'long' }).format(new Date(2026, index, 1))}</option>)}</select></label><label>Año<select aria-label="Año del resumen" value={selectedMonth.slice(0, 4)} onChange={(event) => setSelectedMonth(`${event.target.value}-${selectedMonth.slice(5, 7)}`)}>{yearOptions.map((year) => <option key={year}>{year}</option>)}</select></label></div>
             <section className="summary-grid" aria-label="Resumen de gastos">
