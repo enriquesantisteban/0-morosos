@@ -49,6 +49,18 @@ function calculateShares(total: number, memberIds: string[], mode: SplitMode = '
   return shares
 }
 
+function isMissingContractTable(error: unknown) {
+  let current: unknown = error
+  while (current && typeof current === 'object') {
+    const candidate = current as { code?: unknown; message?: unknown; cause?: unknown }
+    const message = String(candidate.message || '')
+    if (candidate.code === '42P01' && message.includes('contratos_piso')) return true
+    if (message.includes('contratos_piso') && message.includes('does not exist')) return true
+    current = candidate.cause
+  }
+  return false
+}
+
 async function getSessionUser() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) throw new Error('Inicia sesión para continuar.')
@@ -101,7 +113,7 @@ function validateExpense(input: ExpenseInput) {
 
 export async function getDashboardData() {
   const { user, membership, floor } = await getMembership()
-  const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds, paymentRows, floorInfoRows, splitRows, contractRows] = await Promise.all([
+  const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds, paymentRows, floorInfoRows, splitRows] = await Promise.all([
     db.select({ expense: expenses, creator: appUsers.name }).from(expenses).leftJoin(appUsers, eq(expenses.createdBy, appUsers.id)).where(eq(expenses.floorId, floor.id)).orderBy(desc(expenses.date)),
     db.select({ membership: members, username: appUsers.username }).from(members).leftJoin(appUsers, eq(members.userId, appUsers.id)).where(eq(members.floorId, floor.id)).orderBy(desc(members.createdAt)),
     db.select({ request: requests, sender: appUsers.name, expenseTitle: expenses.title }).from(requests).leftJoin(appUsers, eq(requests.sentBy, appUsers.id)).leftJoin(expenses, eq(requests.expenseId, expenses.id)).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'))).orderBy(desc(requests.createdAt)),
@@ -110,8 +122,15 @@ export async function getDashboardData() {
     db.select({ entry: history, actor: appUsers.name, expenseTitle: expenses.title }).from(history).leftJoin(appUsers, eq(history.actorId, appUsers.id)).leftJoin(expenses, eq(history.expenseId, expenses.id)).where(and(eq(history.floorId, floor.id), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt)),
     db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, '__floor_info__'), eq(history.action, 'floor_info'))).orderBy(desc(history.createdAt)).limit(1),
     db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.action, 'reparto'))).orderBy(desc(history.createdAt)),
-    db.select().from(floorContracts).where(eq(floorContracts.floorId, floor.id)).limit(1),
   ])
+  let contractRows: typeof floorContracts.$inferSelect[] = []
+  let contractSchemaReady = true
+  try {
+    contractRows = await db.select().from(floorContracts).where(eq(floorContracts.floorId, floor.id)).limit(1)
+  } catch (error) {
+    if (!isMissingContractTable(error)) throw error
+    contractSchemaReady = false
+  }
   const resolvedPayments = new Set(paymentRows.filter(({ entry }) => entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado').map(({ entry }) => (entry.next as Record<string, unknown> | null)?.requestHistoryId))
   const paymentApprovals = paymentRows.filter(({ entry }) => entry.action === 'pago_pendiente' && !resolvedPayments.has(entry.id)).map(({ entry, actor, expenseTitle }) => ({ id: entry.id, expenseId: entry.expenseId, expenseTitle: expenseTitle || 'Gasto eliminado', memberId: String((entry.next as Record<string, unknown> | null)?.memberId || entry.actorId), memberName: actor || 'Miembro del piso', amount: Number((entry.next as Record<string, unknown> | null)?.amount || 0), createdAt: entry.createdAt }))
   const resolutionFor = (id: string) => paymentRows.find(({ entry }) => (entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado') && (entry.next as Record<string, unknown> | null)?.requestHistoryId === id)?.entry
@@ -139,6 +158,7 @@ export async function getDashboardData() {
     user: { id: user.id, name: user.name, username: 'username' in user ? user.username : null, image: user.image || null },
     contract: contract && canViewContract ? { fileName: contract.fileName, updatedAt: contract.updatedAt, visibleTo: isAdmin ? contract.visibleTo : [] } : null,
     contractExists: Boolean(contract),
+    contractSchemaReady,
     expenses: expenseRows.map(({ expense, creator }) => {
       const splitEntry = splitRows.find((entry) => entry.expenseId === expense.id)
       const pendingSplit = pendingAdds.find((request) => request.expenseId === expense.id)?.proposal as { splitMode?: SplitMode; splitValues?: Record<string, number> } | undefined
