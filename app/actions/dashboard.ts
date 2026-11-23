@@ -407,12 +407,22 @@ export async function markExpensePaid(expenseId: string) {
   if (pendingApproval) throw new Error('Espera a que se apruebe el gasto antes de indicar el pago.')
   const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado', 'pago_revertido']))).orderBy(desc(history.createdAt))
   const isAdmin = membership.role === 'admin' || floor.adminId === user.id
-  if (isAdmin && paymentEvents.some((event) => event.action === 'pago_confirmado' && (event.next as Record<string, unknown> | null)?.memberId === user.id && !(event.next as Record<string, unknown> | null)?.requestHistoryId)) throw new Error('Tu parte ya aparece como pagada.')
-  const previous = paymentEvents.find((event) => event.action === 'pago_pendiente' && (event.next as Record<string, unknown> | null)?.memberId === user.id)
-  if (previous) {
-    const resolution = paymentEvents.find((event) => (event.action === 'pago_confirmado' || event.action === 'pago_rechazado') && (event.next as Record<string, unknown> | null)?.requestHistoryId === previous.id)
-    if (!resolution || resolution.action === 'pago_confirmado') throw new Error('Ya hay un pago pendiente de revisión o confirmado para este gasto.')
+  const resolvedRequests = new Set(paymentEvents.filter((event) => event.action === 'pago_confirmado' || event.action === 'pago_rechazado').map((event) => (event.next as Record<string, unknown> | null)?.requestHistoryId))
+  let currentStatus: 'pendiente' | 'confirmado' | 'rechazado' | 'sin_pagar' = 'sin_pagar'
+  let hasCurrentStatus = false
+  for (const event of paymentEvents) {
+    const payload = event.next as Record<string, unknown> | null
+    if (String(payload?.memberId || event.actorId) !== user.id || hasCurrentStatus) continue
+    if (event.action === 'pago_pendiente') {
+      if (resolvedRequests.has(event.id)) continue
+      currentStatus = 'pendiente'
+    } else {
+      currentStatus = event.action === 'pago_confirmado' ? 'confirmado' : event.action === 'pago_revertido' ? 'sin_pagar' : 'rechazado'
+    }
+    hasCurrentStatus = true
   }
+  if (currentStatus === 'confirmado') throw new Error('Tu parte ya aparece como pagada.')
+  if (currentStatus === 'pendiente') throw new Error('Ya hay un pago pendiente de revisión para este gasto.')
   const memberRows = await db.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
   const [splitEntry] = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), eq(history.action, 'reparto'))).orderBy(desc(history.createdAt)).limit(1)
   const splitPayload = splitEntry?.next as { mode?: SplitMode; allocations?: Record<string, number> } | null
