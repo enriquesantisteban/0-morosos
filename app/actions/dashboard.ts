@@ -106,7 +106,6 @@ function validateExpense(input: ExpenseInput) {
   if (!Number.isFinite(input.amount) || input.amount <= 0 || input.amount > 10000000) throw new Error('Introduce un importe válido.')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || Number.isNaN(Date.parse(input.date))) throw new Error('La fecha no es válida.')
   if (['Luz', 'Agua'].includes(input.type) && (!input.periodStart || !input.periodEnd || input.periodStart > input.periodEnd)) throw new Error('Indica un periodo válido para la factura.')
-  if (input.type === 'Alquiler' && !/^\d{4}-\d{2}$/.test(input.rentMonth || '')) throw new Error('Indica el mes al que corresponde el alquiler.')
   if ((input.note || '').length > 240) throw new Error('La nota no puede superar los 240 caracteres.')
   return { ...input, title }
 }
