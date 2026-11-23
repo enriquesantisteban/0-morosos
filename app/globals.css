@@ -90,3 +90,36 @@
 .activity-item:hover{background:#f8faf7}
 @media(max-width:760px){.payment-status-banner{align-items:stretch;flex-direction:column;gap:15px}.payment-status-action{width:100%}}
 @media(max-width:420px){.payment-status-copy{align-items:flex-start}.payment-status-copy h2{font-size:13px}.payment-status-action{align-items:stretch;flex-direction:column}.payment-status-action .outline-button{justify-content:center}}
+
+/* Dashboard refresh: warmer canvas, clearer type scale and a dedicated invoice action. */
+.page-content:has(.dashboard-upload-card){max-width:1440px;padding-top:42px}
+.page-content:has(.dashboard-upload-card) .welcome-row{align-items:center;margin-bottom:22px}
+.page-content:has(.dashboard-upload-card) .welcome-row h1{font-size:32px;letter-spacing:-1.4px}
+.page-content:has(.dashboard-upload-card) .page-subtitle{font-size:13px}
+.dashboard-upload-card{position:relative;display:flex;align-items:center;gap:16px;min-height:106px;overflow:hidden;margin:0 0 16px;padding:18px 22px;border:1px solid #dce6d9;border-radius:16px;background:linear-gradient(110deg,#eef4eb 0%,#f6f8f2 68%,#edf3e8 100%)}
+.upload-card-mark{display:grid;width:46px;height:46px;flex:none;place-items:center;border:1px solid #dbe7d7;border-radius:14px;background:#fff;color:#49684e;box-shadow:0 3px 12px #334a3210}
+.upload-card-copy{position:relative;z-index:1;flex:1;min-width:0}
+.upload-card-copy .summary-label{color:#738672}
+.upload-card-copy h2{margin:5px 0 4px;color:#2f4132;font-size:16px;font-weight:650;letter-spacing:-.35px}
+.upload-card-copy p{margin:0;color:#778477;font-size:11px;line-height:1.5}
+.upload-card-action{position:relative;z-index:1;display:inline-flex;min-height:39px;align-items:center;justify-content:center;gap:7px;padding:0 14px;border:1px solid #344d3a;border-radius:9px;background:#344d3a;color:white;font-size:11px;font-weight:650;white-space:nowrap;transition:transform .16s,background .16s,box-shadow .16s}
+.upload-card-action:hover{transform:translateY(-1px);background:#263e2d;box-shadow:0 5px 14px #263e2d20}
+.upload-card-decoration{position:absolute;top:-30px;right:108px;color:#49684e0b;font-size:170px;font-weight:750;line-height:1;pointer-events:none}
+.page-content:has(.dashboard-upload-card) .floor-info-card{margin-bottom:16px;padding:15px 19px;border-color:#e8ebe5;border-radius:14px;background:#fff}
+.page-content:has(.dashboard-upload-card) .summary-grid{gap:16px}
+.page-content:has(.dashboard-upload-card) .summary-card{min-height:151px;padding:19px 21px 16px;border-color:#e6e9e3;border-radius:15px;box-shadow:0 2px 9px #263d2f05}
+.page-content:has(.dashboard-upload-card) .summary-card.total-card{border-color:#344d3a;background:linear-gradient(145deg,#354f3a,#2e4733);box-shadow:0 9px 22px #30493419}
+.page-content:has(.dashboard-upload-card) .summary-value{font-size:30px}
+.page-content:has(.dashboard-upload-card) .dashboard-grid{gap:16px;margin-top:16px}
+.page-content:has(.dashboard-upload-card) .panel{border-color:#e6e9e3;border-radius:15px;box-shadow:0 2px 9px #263d2f04}
+.page-content:has(.dashboard-upload-card) .spending-panel,.page-content:has(.dashboard-upload-card) .activity-panel{padding:21px 22px 0}
+.payment-status-banner{min-height:88px;margin-top:16px;margin-bottom:0;padding:16px 20px;border-color:#e4e9e1;border-radius:14px;background:#fff}
+.page-content:has(.dashboard-upload-card) .bottom-grid{gap:16px;margin-top:16px}
+.page-content:has(.dashboard-upload-card) .tip-card{border-radius:15px}
+.activity-empty{display:flex;min-height:240px;align-items:center;justify-content:center;flex-direction:column;gap:8px;padding:20px;text-align:center}
+.activity-empty .empty-check{width:36px;height:36px;background:#edf4eb;color:#527653}
+.activity-empty>b{margin-top:2px;color:#39473a;font-size:12px}
+.activity-empty>span:not(.empty-check){max-width:230px;color:#899289;font-size:10px;line-height:1.55}
+.activity-empty .text-link{margin-top:4px}
+.activity-panel:has(.activity-empty) .activity-footer{display:none}
+@media(max-width:760px){.page-content:has(.dashboard-upload-card){padding:25px 19px 38px}.dashboard-upload-card{align-items:flex-start;flex-wrap:wrap;padding:17px}.upload-card-copy{width:calc(100% - 62px);flex:1 1 calc(100% - 62px)}.upload-card-action{width:100%}.upload-card-decoration{right:24px}.page-content:has(.dashboard-upload-card) .welcome-row h1{font-size:27px}.page-content:has(.dashboard-upload-card) .summary-card{min-height:132px;padding:15px}}
