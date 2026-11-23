@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, Menu, MoreHorizontal, Pencil, Plus, Search, Sparkles, Trash2, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
 import { createExpense, createFloorInvitation, getDashboardData, markExpensePaid, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, submitExpenseRequest, updateExpense, updateFloorDescription, updateFloorName } from '@/app/actions/dashboard'
 import type { getDashboardData as getDashboardDataType } from '@/app/actions/dashboard'
@@ -25,6 +25,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   const [floorName, setFloorName] = useState(initialData.floor.name)
   const [floorDescription, setFloorDescription] = useState(initialData.floor.description)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [googleLinked, setGoogleLinked] = useState(false)
   const [reportYear, setReportYear] = useState(new Date().getFullYear())
   const [expenses, setExpenses] = useState<Expense[]>(mapExpenses(initialData.expenses))
   const [members, setMembers] = useState(initialData.members)
@@ -61,6 +62,30 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   const largestCategory = [...categoryTotals].sort((a, b) => b.amount - a.amount)[0]
   const donutGradient = total > 0 ? (() => { let accumulated = 0; const segments = categoryTotals.filter((category) => category.amount > 0).map((category) => { const start = accumulated / total * 100; accumulated += category.amount; return `${categoryColor(category.type)} ${start}% ${accumulated / total * 100}%` }); return `conic-gradient(${segments.join(', ')})` })() : 'conic-gradient(#e9ece8 0 100%)'
   const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(''), 2800) }
+
+  useEffect(() => {
+    void authClient.listAccounts().then(({ data }) => {
+      setGoogleLinked(Boolean(data?.some((account) => account.providerId === 'google')))
+    }).catch(() => {})
+
+    const url = new URL(window.location.href)
+    const linkStatus = url.searchParams.get('google_link')
+    if (linkStatus) {
+      const errorCode = url.searchParams.get('error')
+      if (linkStatus === 'complete') {
+        setGoogleLinked(true)
+        notify('Cuenta de Google vinculada. Ya podrás iniciar sesión con Google.')
+      } else {
+        notify(errorCode?.includes('email') && errorCode.includes('match')
+          ? 'La cuenta de Google debe usar el mismo correo que esta cuenta.'
+          : `No se pudo vincular Google${errorCode ? ` (${errorCode})` : ''}.`)
+      }
+      url.searchParams.delete('google_link')
+      url.searchParams.delete('error')
+      url.searchParams.delete('error_description')
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+  }, [])
   const selectedDate = new Date(`${selectedMonth}-01T12:00:00`)
   const monthName = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(selectedDate)
   const currentYear = new Date().getFullYear()
@@ -178,6 +203,24 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
     else notify('Te hemos enviado un correo para confirmar la dirección')
   }
 
+  async function linkGoogleAccount() {
+    setAccountMenuOpen(false)
+    const callbackURL = new URL(window.location.href)
+    callbackURL.searchParams.set('google_link', 'complete')
+    const errorCallbackURL = new URL(window.location.href)
+    errorCallbackURL.searchParams.set('google_link', 'error')
+    try {
+      const result = await authClient.linkSocial({
+        provider: 'google',
+        callbackURL: callbackURL.toString(),
+        errorCallbackURL: errorCallbackURL.toString(),
+      })
+      if (result.error) notify(result.error.message || 'No se pudo iniciar la vinculación con Google')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo conectar con Google')
+    }
+  }
+
   function openExpenseForm() {
     setEditingId(null)
     setInvoiceFile(null)
@@ -285,7 +328,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
         </nav>
         <div className="sidebar-bottom">
           <div className="help-card"><div className="help-icon"><Sparkles size={16} /></div><b>Convivir, más fácil.</b><p>Un piso organizado es un piso feliz.</p><button onClick={() => notify('Centro de ayuda: hola@0morosos.es')}>Centro de ayuda <ArrowRight size={13} /></button></div>
-          <div className="profile-menu-wrap"><div className="profile-row"><span className="avatar lilac">{initialData.user.name.slice(0, 2).toUpperCase()}</span><span className="profile-copy"><b>{initialData.user.name}</b><small>@{initialData.user.username || 'usuario'} · {initialData.floor.role === 'admin' ? 'Administrador/a' : 'Miembro'}</small></span><button className="profile-menu-trigger" aria-label="Abrir opciones de cuenta" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button></div>{accountMenuOpen && <div className="account-menu"><button onClick={() => void changeRecoveryEmail()}>Cambiar correo de recuperación</button><button onClick={() => void signOut()}>Cerrar sesión</button></div>}</div>
+          <div className="profile-menu-wrap"><div className="profile-row"><span className="avatar lilac">{initialData.user.name.slice(0, 2).toUpperCase()}</span><span className="profile-copy"><b>{initialData.user.name}</b><small>@{initialData.user.username || 'usuario'} · {initialData.floor.role === 'admin' ? 'Administrador/a' : 'Miembro'}</small></span><button className="profile-menu-trigger" aria-label="Abrir opciones de cuenta" aria-expanded={accountMenuOpen} onClick={() => setAccountMenuOpen((open) => !open)}><MoreHorizontal size={18} /></button></div>{accountMenuOpen && <div className="account-menu"><button onClick={() => void changeRecoveryEmail()}>Cambiar correo de recuperación</button><button onClick={() => void linkGoogleAccount()} disabled={googleLinked}>{googleLinked ? 'Google ya está vinculado' : 'Vincular cuenta de Google'}</button><button onClick={() => void signOut()}>Cerrar sesión</button></div>}</div>
         </div>
       </aside>
       {mobileNav && <button className="mobile-backdrop" aria-label="Cerrar menú" onClick={() => setMobileNav(false)} />}

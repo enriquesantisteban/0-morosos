@@ -24,7 +24,7 @@ export default function AccessPage() {
     if (googleStatus === 'error') {
       const errorCode = params.get('error') || params.get('error_description') || 'desconocido'
       const messages: Record<string, string> = {
-        account_not_linked: 'Google no pudo vincular esta cuenta. Comprueba que has elegido el mismo correo que usaste al registrarte.',
+        account_not_linked: 'Esta cuenta aún no está vinculada. Entra primero con tu usuario y contraseña y, desde el menú de tu cuenta, selecciona «Vincular cuenta de Google». Después podrás entrar directamente con Google.',
         email_not_verified: 'Google no ha podido verificar el correo de esta cuenta.',
         state_mismatch: 'La sesión de Google ha caducado. Vuelve a intentarlo en una sola pestaña.',
         unable_to_create_session: 'Google autenticó la cuenta, pero no se pudo guardar la sesión. Inténtalo de nuevo.',
