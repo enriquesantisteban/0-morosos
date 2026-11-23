@@ -17,6 +17,7 @@ type ExpenseInput = {
   amount: number
   date: string
   note?: string
+  isPrivate?: boolean
   periodStart?: string
   periodEnd?: string
   rentMonth?: string
@@ -107,6 +108,7 @@ function validateExpense(input: ExpenseInput) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || Number.isNaN(Date.parse(input.date))) throw new Error('La fecha no es válida.')
   if (['Luz', 'Agua'].includes(input.type) && (!input.periodStart || !input.periodEnd || input.periodStart > input.periodEnd)) throw new Error('Indica un periodo válido para la factura.')
   if ((input.note || '').length > 240) throw new Error('La nota no puede superar los 240 caracteres.')
+  if (input.isPrivate !== undefined && typeof input.isPrivate !== 'boolean') throw new Error('La privacidad del gasto no es válida.')
   return { ...input, title }
 }
 
@@ -158,7 +160,11 @@ export async function getDashboardData() {
     contract: contract && canViewContract ? { fileName: contract.fileName, updatedAt: contract.updatedAt, visibleTo: isAdmin ? contract.visibleTo : [] } : null,
     contractExists: Boolean(contract),
     contractSchemaReady,
-    expenses: expenseRows.map(({ expense, creator }) => {
+    expenses: expenseRows.filter(({ expense }) => !expense.isPrivate || expense.createdBy === user.id).map(({ expense, creator }) => {
+      const expenseAmount = Number(expense.amount)
+      if (expense.isPrivate) {
+        return { ...expense, amount: expenseAmount, person: creator || user.name, pendingApproval: false, paymentStatus: 'confirmado' as const, personalShare: expenseAmount, splitMode: 'igual' as const, splitValues: { [user.id]: 1 }, payments: [{ memberId: user.id, name: creator || user.name, status: 'confirmado' as const, amount: expenseAmount, parts: 1 }] }
+      }
       const splitEntry = splitRows.find((entry) => entry.expenseId === expense.id)
       const pendingSplit = pendingAdds.find((request) => request.expenseId === expense.id)?.proposal as { splitMode?: SplitMode; splitValues?: Record<string, number> } | undefined
       const splitPayload = (splitEntry?.next as { mode?: SplitMode; allocations?: Record<string, number> } | null) || (pendingSplit ? { mode: pendingSplit.splitMode, allocations: pendingSplit.splitValues } : null)
@@ -244,9 +250,10 @@ export async function joinFloorWithInvitation(token: string) {
 }
 
 export async function getExpenseDetails(id: string) {
-  const { floor } = await getMembership()
+  const { user, floor } = await getMembership()
   const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id))).limit(1)
   if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
+  if (expense.isPrivate && expense.createdBy !== user.id) throw new Error('No encontramos ese gasto en tu piso.')
   const entries = await db.select({ entry: history, actor: appUsers.name }).from(history).leftJoin(appUsers, eq(history.actorId, appUsers.id)).where(and(eq(history.expenseId, id), eq(history.floorId, floor.id))).orderBy(desc(history.createdAt))
   return { expense: { ...expense, amount: Number(expense.amount) }, history: entries.map(({ entry, actor }) => ({ ...entry, actor: actor || 'Miembro del piso' })) }
 }
@@ -255,15 +262,20 @@ export async function createExpense(input: ExpenseInput) {
   const context = await getMembership()
   const { user, floor } = context
   const value = validateExpense(input)
+  const isPrivate = value.isPrivate === true
   const memberRows = await db.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
   const splitMode = input.splitMode || 'igual'
-  const splitValues = validateSplit(value.amount, memberRows.map((member) => member.userId), splitMode, input.splitValues)
+  const splitValues = isPrivate ? {} : validateSplit(value.amount, memberRows.map((member) => member.userId), splitMode, input.splitValues)
   const splitSnapshot = { mode: splitMode, allocations: splitValues }
   if (value.invoicePath && (!value.invoicePath.startsWith(`facturas/${floor.id}/`) || value.invoicePath.includes('..'))) throw new Error('La factura no pertenece a este piso.')
   if (value.invoiceName && value.invoiceName.length > 120) throw new Error('El nombre de la factura es demasiado largo.')
   const id = randomUUID()
   await db.transaction(async (tx) => {
-    await tx.insert(expenses).values({ id, floorId: floor.id, title: value.title, type: value.type, amount: value.amount.toFixed(2), date: value.date, periodStart: value.periodStart || null, periodEnd: value.periodEnd || null, rentMonth: value.rentMonth || null, note: value.note?.trim() || null, createdBy: user.id, invoicePath: value.invoicePath || null, invoiceName: value.invoiceName || null })
+    await tx.insert(expenses).values({ id, floorId: floor.id, title: value.title, type: value.type, amount: value.amount.toFixed(2), date: value.date, periodStart: value.periodStart || null, periodEnd: value.periodEnd || null, rentMonth: value.rentMonth || null, note: value.note?.trim() || null, createdBy: user.id, invoicePath: value.invoicePath || null, invoiceName: value.invoiceName || null, isPrivate })
+    if (isPrivate) {
+      await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'creado', next: { ...value, isPrivate: true } })
+      return
+    }
     if (context.membership.role !== 'admin' && floor.adminId !== user.id) {
       const proposal = { title: value.title, type: value.type, amount: value.amount, date: value.date, note: value.note || '', periodStart: value.periodStart || '', periodEnd: value.periodEnd || '', rentMonth: value.rentMonth || '', splitMode, splitValues, _newExpense: true }
       await tx.insert(requests).values({ id: randomUUID(), floorId: floor.id, expenseId: id, sentBy: user.id, reason: 'Nuevo gasto', proposal, status: 'pendiente' })
@@ -290,6 +302,7 @@ export async function updateExpense(id: string, input: ExpenseInput) {
   if (value.invoicePath && (!value.invoicePath.startsWith(`facturas/${floor.id}/`) || value.invoicePath.includes('..'))) throw new Error('La factura no pertenece a este piso.')
   const [previous] = await db.select().from(expenses).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id))).limit(1)
   if (!previous) throw new Error('No encontramos ese gasto en tu piso.')
+  if (previous.isPrivate && previous.createdBy !== user.id) throw new Error('No encontramos ese gasto en tu piso.')
   const next = {
     title: value.title,
     type: value.type,
@@ -318,6 +331,7 @@ export async function deleteExpense(id: string) {
   const { user, floor } = await requireAdmin()
   const [previous] = await db.select().from(expenses).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id))).limit(1)
   if (!previous) throw new Error('No encontramos ese gasto en tu piso.')
+  if (previous.isPrivate && previous.createdBy !== user.id) throw new Error('No encontramos ese gasto en tu piso.')
   await db.transaction(async (tx) => {
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'eliminado', previous, next: null })
     await tx.delete(expenses).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id)))
@@ -335,6 +349,7 @@ export async function submitExpenseRequest(expenseId: string, reason: string, pr
   if (proposal.amount !== undefined && (!Number.isFinite(proposal.amount) || proposal.amount <= 0)) throw new Error('El importe propuesto no es válido.')
   const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.floorId, floor.id))).limit(1)
   if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
+  if (expense.isPrivate) throw new Error('Los gastos privados no pueden compartirse como gasto del piso.')
   const safeProposal = Object.fromEntries(Object.entries(proposal).filter(([key]) => ['title', 'type', 'amount', 'date', 'note', 'periodStart', 'periodEnd', 'rentMonth'].includes(key)))
   const id = randomUUID()
   await db.transaction(async (tx) => {
@@ -403,6 +418,7 @@ export async function markExpensePaid(expenseId: string) {
   const { user, floor, membership } = await getMembership()
   const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.floorId, floor.id))).limit(1)
   if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
+  if (expense.isPrivate) throw new Error('Los gastos privados no tienen pagos compartidos.')
   const [pendingApproval] = await db.select({ id: requests.id }).from(requests).where(and(eq(requests.expenseId, expenseId), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)).limit(1)
   if (pendingApproval) throw new Error('Espera a que se apruebe el gasto antes de indicar el pago.')
   const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado', 'pago_revertido']))).orderBy(desc(history.createdAt))
@@ -464,6 +480,7 @@ export async function markMemberExpensePaid(expenseId: string, memberId: string)
   const { user, floor } = await requireAdmin()
   const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.floorId, floor.id))).limit(1)
   if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
+  if (expense.isPrivate) throw new Error('Los gastos privados no tienen pagos compartidos.')
   const [member] = await db.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.userId, memberId))).limit(1)
   if (!member) throw new Error('Esa persona ya no forma parte del piso.')
   const [pendingApproval] = await db.select({ id: requests.id }).from(requests).where(and(eq(requests.expenseId, expenseId), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)).limit(1)
@@ -506,6 +523,7 @@ export async function revertMemberExpensePaid(expenseId: string, memberId: strin
   const { user, floor } = await requireAdmin()
   const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.floorId, floor.id))).limit(1)
   if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
+  if (expense.isPrivate) throw new Error('Los gastos privados no tienen pagos compartidos.')
   const [member] = await db.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.userId, memberId))).limit(1)
   if (!member) throw new Error('Esa persona ya no forma parte del piso.')
   const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado', 'pago_revertido']))).orderBy(desc(history.createdAt))

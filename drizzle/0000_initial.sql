@@ -95,9 +95,11 @@ CREATE TABLE IF NOT EXISTS "gastos" (
   "registradoPor" text NOT NULL,
   "facturaPath" text,
   "facturaNombre" text,
+  "privado" boolean NOT NULL DEFAULT false,
   "createdAt" timestamptz NOT NULL DEFAULT now(),
   "updatedAt" timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE "gastos" ADD COLUMN IF NOT EXISTS "privado" boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS "gastos_floor_date_idx" ON "gastos" ("pisoId", "fecha");
 
 CREATE TABLE IF NOT EXISTS "solicitudes" (

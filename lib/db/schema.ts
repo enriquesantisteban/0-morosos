@@ -31,6 +31,7 @@ export const expenses = pgTable('gastos', {
   createdBy: text('registradoPor').notNull(),
   invoicePath: text('facturaPath'),
   invoiceName: text('facturaNombre'),
+  isPrivate: boolean('privado').notNull().default(false),
   createdAt: timestamp('createdAt', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updatedAt', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('gastos_floor_date_idx').on(table.floorId, table.date)])

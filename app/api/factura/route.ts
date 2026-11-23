@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { get, put } from '@vercel/blob'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { members } from '@/lib/db/schema'
+import { expenses, members } from '@/lib/db/schema'
 
 const maxBytes = 5 * 1024 * 1024
 const formats = {
@@ -47,8 +47,12 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const floorId = await getFloorId()
   if (!floorId) return NextResponse.json({ error: 'Debes iniciar sesión.' }, { status: 401 })
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user) return NextResponse.json({ error: 'Debes iniciar sesiÃ³n.' }, { status: 401 })
   const pathname = request.nextUrl.searchParams.get('path')
   if (!pathname || !pathname.startsWith(`facturas/${floorId}/`) || pathname.includes('..')) return NextResponse.json({ error: 'Factura no encontrada.' }, { status: 404 })
+  const [expense] = await db.select({ isPrivate: expenses.isPrivate, createdBy: expenses.createdBy }).from(expenses).where(and(eq(expenses.floorId, floorId), eq(expenses.invoicePath, pathname))).limit(1)
+  if (!expense || (expense.isPrivate && expense.createdBy !== session.user.id)) return NextResponse.json({ error: 'Factura no encontrada.' }, { status: 404 })
 
   try {
     const result = await get(pathname, { access: 'private', ifNoneMatch: request.headers.get('if-none-match') ?? undefined })
