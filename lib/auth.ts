@@ -54,7 +54,12 @@ export const auth = betterAuth({
     }),
   },
   user: { changeEmail: { enabled: true } },
-  account: { accountLinking: { enabled: false } },
+  account: {
+    accountLinking: {
+      enabled: true,
+      allowDifferentEmails: false,
+    },
+  },
   plugins: [username({ displayUsername: false, minUsernameLength: 3, maxUsernameLength: 24, usernameValidator: (value) => /^[a-z0-9][a-z0-9._-]{2,23}$/.test(value) })],
   socialProviders: googleClientId && googleClientSecret ? {
     google: {
