@@ -118,7 +118,7 @@ export async function getDashboardData() {
     db.select({ request: requests, sender: appUsers.name, expenseTitle: expenses.title }).from(requests).leftJoin(appUsers, eq(requests.sentBy, appUsers.id)).leftJoin(expenses, eq(requests.expenseId, expenses.id)).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'))).orderBy(desc(requests.createdAt)),
     db.select().from(notifications).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id))).orderBy(desc(notifications.createdAt)),
     db.select({ expenseId: requests.expenseId, proposal: requests.proposal }).from(requests).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)),
-    db.select({ entry: history, actor: appUsers.name, expenseTitle: expenses.title }).from(history).leftJoin(appUsers, eq(history.actorId, appUsers.id)).leftJoin(expenses, eq(history.expenseId, expenses.id)).where(and(eq(history.floorId, floor.id), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt)),
+    db.select({ entry: history, actor: appUsers.name, expenseTitle: expenses.title }).from(history).leftJoin(appUsers, eq(history.actorId, appUsers.id)).leftJoin(expenses, eq(history.expenseId, expenses.id)).where(and(eq(history.floorId, floor.id), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado', 'pago_revertido']))).orderBy(desc(history.createdAt)),
     db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, '__floor_info__'), eq(history.action, 'floor_info'))).orderBy(desc(history.createdAt)).limit(1),
     db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.action, 'reparto'))).orderBy(desc(history.createdAt)),
   ])
@@ -136,7 +136,7 @@ export async function getDashboardData() {
   const contract = contractRows[0]
   const isAdmin = membership.role === 'admin' || floor.adminId === user.id
   const canViewContract = Boolean(contract && (isAdmin || contract.visibleTo.includes(user.id)))
-  const expensePayments = new Map<string, Map<string, { status: 'pendiente' | 'confirmado' | 'rechazado'; amount: number }>>()
+  const expensePayments = new Map<string, Map<string, { status: 'pendiente' | 'confirmado' | 'rechazado' | 'sin_pagar'; amount: number }>>()
   for (const { entry } of paymentRows) {
     const payload = entry.next as Record<string, unknown> | null
     if (entry.action === 'pago_pendiente') {
@@ -145,10 +145,10 @@ export async function getDashboardData() {
       const paymentsForExpense = expensePayments.get(entry.expenseId) || new Map()
       if (!paymentsForExpense.has(memberId)) paymentsForExpense.set(memberId, { status: 'pendiente', amount: Number(payload?.amount || 0) })
       expensePayments.set(entry.expenseId, paymentsForExpense)
-    } else if (entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado') {
+    } else if (entry.action === 'pago_confirmado' || entry.action === 'pago_rechazado' || entry.action === 'pago_revertido') {
       const memberId = String(payload?.memberId || entry.actorId)
       const paymentsForExpense = expensePayments.get(entry.expenseId) || new Map()
-      if (!paymentsForExpense.has(memberId)) paymentsForExpense.set(memberId, { status: entry.action === 'pago_confirmado' ? 'confirmado' : 'rechazado', amount: Number(payload?.amount || 0) })
+      if (!paymentsForExpense.has(memberId)) paymentsForExpense.set(memberId, { status: entry.action === 'pago_confirmado' ? 'confirmado' : entry.action === 'pago_revertido' ? 'sin_pagar' : 'rechazado', amount: Number(payload?.amount || 0) })
       expensePayments.set(entry.expenseId, paymentsForExpense)
     }
   }
@@ -405,7 +405,7 @@ export async function markExpensePaid(expenseId: string) {
   if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
   const [pendingApproval] = await db.select({ id: requests.id }).from(requests).where(and(eq(requests.expenseId, expenseId), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)).limit(1)
   if (pendingApproval) throw new Error('Espera a que se apruebe el gasto antes de indicar el pago.')
-  const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt))
+  const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado', 'pago_revertido']))).orderBy(desc(history.createdAt))
   const isAdmin = membership.role === 'admin' || floor.adminId === user.id
   if (isAdmin && paymentEvents.some((event) => event.action === 'pago_confirmado' && (event.next as Record<string, unknown> | null)?.memberId === user.id && !(event.next as Record<string, unknown> | null)?.requestHistoryId)) throw new Error('Tu parte ya aparece como pagada.')
   const previous = paymentEvents.find((event) => event.action === 'pago_pendiente' && (event.next as Record<string, unknown> | null)?.memberId === user.id)
@@ -459,19 +459,22 @@ export async function markMemberExpensePaid(expenseId: string, memberId: string)
   const [pendingApproval] = await db.select({ id: requests.id }).from(requests).where(and(eq(requests.expenseId, expenseId), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)).limit(1)
   if (pendingApproval) throw new Error('Espera a que se apruebe el gasto antes de registrar pagos.')
 
-  const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt))
+  const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado', 'pago_revertido']))).orderBy(desc(history.createdAt))
   const resolvedRequests = new Set(paymentEvents.filter((event) => event.action === 'pago_confirmado' || event.action === 'pago_rechazado').map((event) => (event.next as Record<string, unknown> | null)?.requestHistoryId))
   let currentStatus: 'pendiente' | 'confirmado' | 'rechazado' | 'sin_pagar' = 'sin_pagar'
   let unresolvedRequestId: string | null = null
+  let hasCurrentStatus = false
   for (const event of paymentEvents) {
     const payload = event.next as Record<string, unknown> | null
-    if (String(payload?.memberId || event.actorId) !== memberId || currentStatus !== 'sin_pagar') continue
+    if (String(payload?.memberId || event.actorId) !== memberId || hasCurrentStatus) continue
     if (event.action === 'pago_pendiente') {
       if (resolvedRequests.has(event.id)) continue
       currentStatus = 'pendiente'
       unresolvedRequestId = event.id
+      hasCurrentStatus = true
     } else {
-      currentStatus = event.action === 'pago_confirmado' ? 'confirmado' : 'rechazado'
+      currentStatus = event.action === 'pago_confirmado' ? 'confirmado' : event.action === 'pago_revertido' ? 'sin_pagar' : 'rechazado'
+      hasCurrentStatus = true
     }
   }
   if (currentStatus === 'confirmado') throw new Error('La parte de esta persona ya está marcada como pagada.')
@@ -485,6 +488,38 @@ export async function markMemberExpensePaid(expenseId: string, memberId: string)
   await db.transaction(async (tx) => {
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_confirmado', previous: unresolvedRequestId ? paymentEvents.find((event) => event.id === unresolvedRequestId)?.next : null, next: { ...(unresolvedRequestId ? { requestHistoryId: unresolvedRequestId } : { direct: true }), memberId, amount } })
     await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: memberId, title: 'Pago registrado', message: `La administración ha marcado tu parte de ${amount.toFixed(2)} € como pagada · ${expense.title}` })
+  })
+  revalidatePath('/')
+}
+
+export async function revertMemberExpensePaid(expenseId: string, memberId: string) {
+  const { user, floor } = await requireAdmin()
+  const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.floorId, floor.id))).limit(1)
+  if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
+  const [member] = await db.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.userId, memberId))).limit(1)
+  if (!member) throw new Error('Esa persona ya no forma parte del piso.')
+  const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado', 'pago_revertido']))).orderBy(desc(history.createdAt))
+  const resolvedRequests = new Set(paymentEvents.filter((event) => event.action === 'pago_confirmado' || event.action === 'pago_rechazado').map((event) => (event.next as Record<string, unknown> | null)?.requestHistoryId))
+  let currentStatus: 'pendiente' | 'confirmado' | 'rechazado' | 'sin_pagar' = 'sin_pagar'
+  let latestMemberEvent: (typeof paymentEvents)[number] | undefined
+  let hasCurrentStatus = false
+  for (const event of paymentEvents) {
+    const payload = event.next as Record<string, unknown> | null
+    if (String(payload?.memberId || event.actorId) !== memberId || hasCurrentStatus) continue
+    if (event.action === 'pago_pendiente') {
+      if (resolvedRequests.has(event.id)) continue
+      currentStatus = 'pendiente'
+    } else {
+      currentStatus = event.action === 'pago_confirmado' ? 'confirmado' : event.action === 'pago_revertido' ? 'sin_pagar' : 'rechazado'
+    }
+    latestMemberEvent = event
+    hasCurrentStatus = true
+  }
+  if (currentStatus !== 'confirmado') throw new Error('Esta parte no aparece como pagada.')
+  const amount = Number((latestMemberEvent?.next as Record<string, unknown> | null)?.amount || 0)
+  await db.transaction(async (tx) => {
+    await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_revertido', previous: latestMemberEvent?.next, next: { memberId, amount } })
+    await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: memberId, title: 'Pago actualizado', message: `La administración ha marcado tu parte de ${amount.toFixed(2)} € como no pagada · ${expense.title}` })
   })
   revalidatePath('/')
 }
