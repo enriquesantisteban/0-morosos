@@ -64,3 +64,9 @@
 .profile-name-form input:focus{border-color:#8ca68f;box-shadow:0 0 0 3px #e9f0e8}
 .profile-name-form .primary-button{display:flex;align-items:center;gap:7px}
 @media(max-width:620px){.contract-manager{padding:15px}.contract-member-list{grid-template-columns:1fr}.contract-upload-row{align-items:stretch;flex-direction:column}.contract-upload-row .primary-button{justify-content:center}.contract-document{align-items:flex-start;flex-wrap:wrap;padding:15px}.contract-document-copy{width:calc(100% - 60px);flex:none}.contract-document .outline-button{width:100%;justify-content:center}.profile-editor{grid-template-columns:1fr;gap:16px;padding:18px}.profile-photo-column{border-right:0;border-bottom:1px solid #edf0eb;padding:4px 5px 20px}.profile-name-form{width:100%;max-width:none;padding:5px}}
+
+.top-profile-menu-wrap{position:relative;display:flex;align-items:center}
+.top-avatar-button{padding:0;border:0;cursor:pointer}
+.top-account-menu{position:absolute;top:calc(100% + 10px);right:0;z-index:12;min-width:155px;padding:5px;border:1px solid #e9ece8;border-radius:9px;background:#fff;box-shadow:0 8px 25px #233b261a}
+.top-account-menu button{display:flex;width:100%;align-items:center;gap:8px;padding:9px 10px;border:0;border-radius:6px;background:#fff;color:#566156;text-align:left;font-size:11px}
+.top-account-menu button:hover{background:#f5f7f4;color:#344d3a}

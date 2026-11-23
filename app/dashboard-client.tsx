@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Camera, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, Menu, MoreHorizontal, Pencil, Plus, Search, Sparkles, Trash2, Upload, UserRound, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
+import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Camera, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, LogOut, Menu, MoreHorizontal, Pencil, Plus, Search, Sparkles, Trash2, Upload, UserRound, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
 import { createExpense, createFloorInvitation, getDashboardData, markExpensePaid, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, submitExpenseRequest, updateContractVisibility, updateExpense, updateFloorDescription, updateFloorName, updateOwnProfileName } from '@/app/actions/dashboard'
 import type { getDashboardData as getDashboardDataType } from '@/app/actions/dashboard'
 import { authClient } from '@/lib/auth-client'
@@ -25,6 +25,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   const [floorName, setFloorName] = useState(initialData.floor.name)
   const [floorDescription, setFloorDescription] = useState(initialData.floor.description)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [topAccountMenuOpen, setTopAccountMenuOpen] = useState(false)
   const [googleLinked, setGoogleLinked] = useState(false)
   const [profileName, setProfileName] = useState(initialData.user.name)
   const [profileImage, setProfileImage] = useState(initialData.user.image)
@@ -207,6 +208,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   }
 
   async function signOut() {
+    setTopAccountMenuOpen(false)
     await import('@/lib/auth-client').then(({ authClient }) => authClient.signOut())
     window.location.assign('/acceso')
   }
@@ -399,7 +401,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
       {mobileNav && <button className="mobile-backdrop" aria-label="Cerrar menú" onClick={() => setMobileNav(false)} />}
 
       <section className="main-area">
-        <header className="topbar"><button className="mobile-menu" aria-label="Abrir menú" onClick={() => setMobileNav(true)}><Menu /></button><div className="breadcrumb"><span>{floorName}</span><span className="crumb-slash">/</span><b>{page}</b></div><div className="top-actions"><span className="period-label">{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date())}</span><button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setPage('Notificaciones')}><Bell size={19} />{notifications.some((item) => !item.read) && <i />}</button><span className="avatar top-avatar lilac">{profileImageUrl ? <img src={profileImageUrl} alt=""/> : profileName.slice(0, 2).toUpperCase()}</span></div></header>
+        <header className="topbar"><button className="mobile-menu" aria-label="Abrir menú" onClick={() => setMobileNav(true)}><Menu /></button><div className="breadcrumb"><span>{floorName}</span><span className="crumb-slash">/</span><b>{page}</b></div><div className="top-actions"><span className="period-label">{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date())}</span><button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setPage('Notificaciones')}><Bell size={19} />{notifications.some((item) => !item.read) && <i />}</button><div className="top-profile-menu-wrap"><button className="avatar top-avatar lilac top-avatar-button" aria-label="Abrir menú de cuenta" aria-expanded={topAccountMenuOpen} onClick={() => setTopAccountMenuOpen((open) => !open)}>{profileImageUrl ? <img src={profileImageUrl} alt=""/> : profileName.slice(0, 2).toUpperCase()}</button>{topAccountMenuOpen && <div className="top-account-menu"><button onClick={() => void signOut()}><LogOut size={15}/> Cerrar sesión</button></div>}</div></div></header>
         <div className="page-content">
           {page === 'Contrato' && <>
             <div className="welcome-row"><div><div className="eyebrow"><span className="status-dot" /> DOCUMENTACIÓN DEL PISO</div><h1>Contrato</h1><p className="page-subtitle">Consulta el contrato de alquiler y los permisos para compartirlo.</p></div></div>
