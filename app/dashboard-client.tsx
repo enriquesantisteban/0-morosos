@@ -410,8 +410,24 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
               <div className="contract-upload-row"><label className="contract-file-picker"><Upload size={16}/><span>{contractFile?.name || (contract ? 'Elegir un nuevo PDF para reemplazarlo' : 'Seleccionar contrato en PDF')}</span><input type="file" accept="application/pdf,.pdf" onChange={(event) => setContractFile(event.currentTarget.files?.[0] ?? null)}/></label><button className="primary-button" onClick={() => void saveContract()} disabled={contractSaving || (!contractFile && !contract)}>{contractSaving ? 'Guardando…' : contractFile ? 'Subir contrato y guardar permisos' : 'Guardar permisos'}</button></div>
               <p className="field-hint">PDF · máximo 4 MB. El archivo se guarda de forma privada.</p>
             </section>}
-            {initialData.contractSchemaReady && (contract ? <section className="panel contract-document"><span className="contract-document-icon"><FileText size={24}/></span><div className="contract-document-copy"><span className="summary-label">CONTRATO DEL PISO</span><h2>{contract.fileName}</h2><p>Actualizado el {new Date(contract.updatedAt).toLocaleDateString('es-ES')}</p></div><a className="outline-button" href="/api/contrato" target="_blank" rel="noreferrer">Abrir contrato <ArrowRight size={14}/></a></section>
-              : <section className="panel contract-empty"><span className="contract-document-icon"><FileText size={24}/></span><h2>{contractExists ? 'El contrato aún no está compartido contigo' : 'Todavía no hay un contrato disponible'}</h2><p>{initialData.floor.role === 'admin' ? 'Sube el PDF y selecciona qué miembros del piso podrán verlo.' : 'Pide a la administración del piso que comparta el contrato contigo.'}</p></section>}
+            {initialData.contractSchemaReady && (
+              contract ? (
+                <section className="panel contract-document">
+                  <span className="contract-document-icon"><FileText size={24}/></span>
+                  <div className="contract-document-copy">
+                    <span className="summary-label">CONTRATO DEL PISO</span>
+                    <h2>{contract.fileName}</h2>
+                    <p>Actualizado el {new Date(contract.updatedAt).toLocaleDateString('es-ES')}</p>
+                  </div>
+                  <a className="outline-button" href="/api/contrato" target="_blank" rel="noreferrer">Abrir contrato <ArrowRight size={14}/></a>
+                </section>
+              ) : (
+                <section className="panel contract-empty">
+                  <span className="contract-document-icon"><FileText size={24}/></span>
+                  <h2>{contractExists ? 'El contrato aún no está compartido contigo' : 'Todavía no hay un contrato disponible'}</h2>
+                  <p>{initialData.floor.role === 'admin' ? 'Sube el PDF y selecciona qué miembros del piso podrán verlo.' : 'Pide a la administración del piso que comparta el contrato contigo.'}</p>
+                </section>
+              )
             )}
           </>}
           {page === 'Perfil' && <>
