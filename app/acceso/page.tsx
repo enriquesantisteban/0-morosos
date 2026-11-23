@@ -19,19 +19,42 @@ export default function AccessPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const invitationToken = params.get('invitacion')
-    if (params.get('google') !== 'complete' || !invitationToken || invitationHandled.current) return
+    const googleStatus = params.get('google')
+
+    if (googleStatus === 'error') {
+      const errorCode = params.get('error') || params.get('error_description') || 'desconocido'
+      const messages: Record<string, string> = {
+        account_not_linked: 'Google no pudo vincular esta cuenta. Comprueba que has elegido el mismo correo que usaste al registrarte.',
+        email_not_verified: 'Google no ha podido verificar el correo de esta cuenta.',
+        state_mismatch: 'La sesión de Google ha caducado. Vuelve a intentarlo en una sola pestaña.',
+        unable_to_create_session: 'Google autenticó la cuenta, pero no se pudo guardar la sesión. Inténtalo de nuevo.',
+      }
+      setError(messages[errorCode] || `No se pudo completar el acceso con Google (código: ${errorCode}).`)
+      return
+    }
+
+    if (googleStatus !== 'complete' || invitationHandled.current) return
     invitationHandled.current = true
+    setLoading(true)
     void authClient.getSession().then(async ({ data }) => {
       if (!data?.user) {
+        setLoading(false)
         setError('No se pudo completar el inicio con Google. Inténtalo de nuevo.')
         return
       }
-      try {
-        await joinFloorWithInvitation(invitationToken)
-        window.location.replace('/')
-      } catch (joinError) {
-        setError(joinError instanceof Error ? joinError.message : 'No se pudo aceptar la invitación.')
+      if (invitationToken) {
+        try {
+          await joinFloorWithInvitation(invitationToken)
+        } catch (joinError) {
+          setLoading(false)
+          setError(joinError instanceof Error ? joinError.message : 'No se pudo aceptar la invitación.')
+          return
+        }
       }
+      window.location.replace('/')
+    }).catch(() => {
+      setLoading(false)
+      setError('Google ha vuelto a la aplicación, pero no se pudo recuperar la sesión. Inténtalo de nuevo.')
     })
   }, [])
 
@@ -39,11 +62,16 @@ export default function AccessPage() {
     setError('')
     setLoading(true)
     const invitationToken = new URLSearchParams(window.location.search).get('invitacion')
-    const callbackURL = invitationToken
-      ? `${window.location.origin}/acceso?invitacion=${encodeURIComponent(invitationToken)}&google=complete`
-      : '/'
+    const callbackURL = new URL('/acceso', window.location.origin)
+    callbackURL.searchParams.set('google', 'complete')
+    const errorCallbackURL = new URL('/acceso', window.location.origin)
+    errorCallbackURL.searchParams.set('google', 'error')
+    if (invitationToken) {
+      callbackURL.searchParams.set('invitacion', invitationToken)
+      errorCallbackURL.searchParams.set('invitacion', invitationToken)
+    }
     try {
-      const result = await authClient.signIn.social({ provider: 'google', callbackURL })
+      const result = await authClient.signIn.social({ provider: 'google', callbackURL: callbackURL.toString(), errorCallbackURL: errorCallbackURL.toString() })
       if (result.error) {
         setLoading(false)
         setError(`No se pudo iniciar sesión con Google${result.error.message ? `: ${result.error.message}` : ''}. Comprueba GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Vercel.`)

@@ -66,7 +66,6 @@ export const auth = betterAuth({
       clientId: googleClientId,
       clientSecret: googleClientSecret,
       prompt: 'select_account',
-      requireEmailVerification: true,
     },
   } : undefined,
   databaseHooks: {
