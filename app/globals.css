@@ -71,3 +71,22 @@
 .top-account-menu button{display:flex;width:100%;align-items:center;gap:8px;padding:9px 10px;border:0;border-radius:6px;background:#fff;color:#566156;text-align:left;font-size:11px}
 .top-account-menu button:hover{background:#f5f7f4;color:#344d3a}
 .sidebar{overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}.sidebar>*{flex-shrink:0}
+
+/* Estado de pagos: el avance común queda visible antes de entrar al detalle. */
+.payment-status-banner{display:flex;align-items:center;justify-content:space-between;gap:22px;margin:0 0 15px;padding:16px 19px;background:linear-gradient(110deg,#fff 0%,#f7faf6 100%);transition:border-color .18s,transform .18s}
+.payment-status-banner:hover{border-color:#d6e1d4;transform:translateY(-1px)}
+.payment-status-copy{display:flex;align-items:center;gap:13px;min-width:0}
+.payment-status-icon{display:grid;width:38px;height:38px;flex:none;place-items:center;border-radius:12px;background:#eaf2e8;color:#527653}
+.payment-status-copy .summary-label{display:block;color:#7b8b7a}
+.payment-status-copy h2{margin:5px 0 3px;color:#2f3d31;font-size:15px;font-weight:650;letter-spacing:-.3px}
+.payment-status-copy p{margin:0;color:#838e83;font-size:10px}
+.payment-status-action{display:flex;align-items:center;gap:15px;width:min(38%,330px);flex:none}
+.payment-progress{height:7px;flex:1;overflow:hidden;border-radius:99px;background:#e9eee7}
+.payment-progress i{display:block;height:100%;border-radius:inherit;background:#658568;transition:width .35s ease}
+.payment-status-action .outline-button{white-space:nowrap}
+.summary-card,.panel,.tip-card{transition:border-color .18s,transform .18s,box-shadow .18s}
+.summary-card:hover,.panel:hover{border-color:#dde5db}
+.activity-item{transition:background .16s}
+.activity-item:hover{background:#f8faf7}
+@media(max-width:760px){.payment-status-banner{align-items:stretch;flex-direction:column;gap:15px}.payment-status-action{width:100%}}
+@media(max-width:420px){.payment-status-copy{align-items:flex-start}.payment-status-copy h2{font-size:13px}.payment-status-action{align-items:stretch;flex-direction:column}.payment-status-action .outline-button{justify-content:center}}
