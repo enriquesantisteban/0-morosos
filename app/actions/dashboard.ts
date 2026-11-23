@@ -450,6 +450,45 @@ export async function resolvePayment(id: string, decision: 'confirmado' | 'recha
   revalidatePath('/')
 }
 
+export async function markMemberExpensePaid(expenseId: string, memberId: string) {
+  const { user, floor } = await requireAdmin()
+  const [expense] = await db.select().from(expenses).where(and(eq(expenses.id, expenseId), eq(expenses.floorId, floor.id))).limit(1)
+  if (!expense) throw new Error('No encontramos ese gasto en tu piso.')
+  const [member] = await db.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.userId, memberId))).limit(1)
+  if (!member) throw new Error('Esa persona ya no forma parte del piso.')
+  const [pendingApproval] = await db.select({ id: requests.id }).from(requests).where(and(eq(requests.expenseId, expenseId), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)).limit(1)
+  if (pendingApproval) throw new Error('Espera a que se apruebe el gasto antes de registrar pagos.')
+
+  const paymentEvents = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), inArray(history.action, ['pago_pendiente', 'pago_confirmado', 'pago_rechazado']))).orderBy(desc(history.createdAt))
+  const resolvedRequests = new Set(paymentEvents.filter((event) => event.action === 'pago_confirmado' || event.action === 'pago_rechazado').map((event) => (event.next as Record<string, unknown> | null)?.requestHistoryId))
+  let currentStatus: 'pendiente' | 'confirmado' | 'rechazado' | 'sin_pagar' = 'sin_pagar'
+  let unresolvedRequestId: string | null = null
+  for (const event of paymentEvents) {
+    const payload = event.next as Record<string, unknown> | null
+    if (String(payload?.memberId || event.actorId) !== memberId || currentStatus !== 'sin_pagar') continue
+    if (event.action === 'pago_pendiente') {
+      if (resolvedRequests.has(event.id)) continue
+      currentStatus = 'pendiente'
+      unresolvedRequestId = event.id
+    } else {
+      currentStatus = event.action === 'pago_confirmado' ? 'confirmado' : 'rechazado'
+    }
+  }
+  if (currentStatus === 'confirmado') throw new Error('La parte de esta persona ya está marcada como pagada.')
+
+  const memberRows = await db.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
+  const [splitEntry] = await db.select().from(history).where(and(eq(history.floorId, floor.id), eq(history.expenseId, expenseId), eq(history.action, 'reparto'))).orderBy(desc(history.createdAt)).limit(1)
+  const splitPayload = splitEntry?.next as { mode?: SplitMode; allocations?: Record<string, number> } | null
+  const amount = calculateShares(Number(expense.amount), memberRows.map((item) => item.userId), splitPayload?.mode || 'igual', splitPayload?.allocations || {})[memberId] || 0
+  if (amount <= 0) throw new Error('Esta persona no tiene una parte asignada en el gasto.')
+
+  await db.transaction(async (tx) => {
+    await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_confirmado', previous: unresolvedRequestId ? paymentEvents.find((event) => event.id === unresolvedRequestId)?.next : null, next: { ...(unresolvedRequestId ? { requestHistoryId: unresolvedRequestId } : { direct: true }), memberId, amount } })
+    await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: memberId, title: 'Pago registrado', message: `La administración ha marcado tu parte de ${amount.toFixed(2)} € como pagada · ${expense.title}` })
+  })
+  revalidatePath('/')
+}
+
 export async function markNotificationsRead() {
   const { user, floor } = await getMembership()
   await db.update(notifications).set({ read: true }).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id)))
