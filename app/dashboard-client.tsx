@@ -5,6 +5,7 @@ import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Camera, Ch
 import { createExpense, createFloorInvitation, deleteExpense, deleteNotification, deleteNotifications, getDashboardData, markExpensePaid, markMemberExpensePaid, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, revertMemberExpensePaid, submitExpenseRequest, updateContractVisibility, updateExpense, updateFloorDescription, updateFloorName, updateOwnProfileName } from '@/app/actions/dashboard'
 import type { getDashboardData as getDashboardDataType } from '@/app/actions/dashboard'
 import { authClient } from '@/lib/auth-client'
+import { getAuthErrorMessage } from '@/lib/auth-errors'
 
 type DashboardPayload = Awaited<ReturnType<typeof getDashboardDataType>>
 type Expense = { id: string; title: string; type: string; date: string; person: string; amount: number; initials: string; color: string; createdBy: string; isPrivate: boolean; periodStart: string | null; periodEnd: string | null; rentMonth: string | null; note: string | null; invoicePath: string | null; invoiceName: string | null; pendingApproval: boolean; paymentStatus: 'ninguno' | 'sin_pagar' | 'pendiente' | 'confirmado' | 'rechazado'; personalShare: number; splitMode: 'igual' | 'partes' | 'importes'; splitValues: Record<string, number>; payments: { memberId: string; name: string; status: 'sin_pagar' | 'pendiente' | 'confirmado' | 'rechazado'; amount: number; parts: number }[] }
@@ -102,9 +103,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
         setGoogleLinked(true)
         notify('Cuenta de Google vinculada. Ya podrás iniciar sesión con Google.')
       } else {
-        notify(errorCode?.includes('email') && errorCode.includes('match')
-          ? 'La cuenta de Google debe usar el mismo correo que esta cuenta.'
-          : `No se pudo vincular Google${errorCode ? ` (${errorCode})` : ''}.`)
+        notify(getAuthErrorMessage(errorCode || 'google', 'google'))
       }
       url.searchParams.delete('google_link')
       url.searchParams.delete('error')
@@ -303,9 +302,9 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
         callbackURL: callbackURL.toString(),
         errorCallbackURL: errorCallbackURL.toString(),
       })
-      if (result.error) notify(result.error.message || 'No se pudo iniciar la vinculación con Google')
+      if (result.error) notify(getAuthErrorMessage(result.error, 'google'))
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo conectar con Google')
+      notify(getAuthErrorMessage(error, 'google'))
     }
   }
 
@@ -448,8 +447,8 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   }
 
   async function removeNotification(id: string) {
-    try { await deleteNotification(id); setNotifications((current) => current.filter((item) => item.id !== id)); notify('Notificaci?n borrada') }
-    catch (error) { notify(error instanceof Error ? error.message : 'No se pudo borrar la notificaci?n') }
+    try { await deleteNotification(id); setNotifications((current) => current.filter((item) => item.id !== id)); notify('Notificación borrada') }
+    catch (error) { notify(error instanceof Error ? error.message : 'No se pudo borrar la notificación') }
   }
 
   async function clearNotifications() {
