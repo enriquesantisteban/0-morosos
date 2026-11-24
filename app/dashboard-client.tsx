@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Camera, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, LogOut, Menu, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Share2, Sparkles, Trash2, Undo2, Upload, UserRound, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
 import { createExpense, createFloorInvitation, deleteExpense, deleteNotification, deleteNotifications, getDashboardData, getRemovedFloorName, markExpensePaid, markMemberExpensePaid, markNotificationRead, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, revertMemberExpensePaid, submitExpenseRequest, updateContractVisibility, updateExpense, updateFloorDescription, updateFloorName, updateOwnProfileName } from '@/app/actions/dashboard'
 import type { getDashboardData as getDashboardDataType } from '@/app/actions/dashboard'
@@ -234,11 +234,11 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
     notify(`Histórico de ${reportYear} descargado`)
   }
 
-  async function refreshDashboard() {
+  const refreshDashboard = useCallback(async () => {
     const removedName = await getRemovedFloorName()
     if (removedName) {
       setRemovedFloorName(removedName)
-      return
+      return false
     }
     const fresh = await getDashboardData()
     setExpenses(mapExpenses(fresh.expenses))
@@ -252,7 +252,8 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
     setContractExists(fresh.contractExists)
     setContractVisibleTo(fresh.contract?.visibleTo || [])
     setRequests(fresh.requests.map((request, index) => ({ ...request, title: request.expenseTitle || 'Gasto eliminado', detail: request.reason === "Nuevo gasto" ? `${request.expenseTitle || "Gasto"} · ${euro(Number(request.proposal.amount))}` : request.reason, name: request.sender, initials: request.sender.split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase(), color: colors[index % colors.length], time: new Date(request.createdAt).toLocaleDateString('es-ES') })))
-  }
+    return true
+  }, [])
 
   async function reloadDashboard() {
     if (refreshing) return
@@ -666,6 +667,33 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
       document.removeEventListener('visibilitychange', checkMembership)
     }
   }, [])
+
+  useEffect(() => {
+    let active = true
+    let syncing = false
+    let accessRevoked = false
+    const syncData = async () => {
+      if (!active || syncing || accessRevoked || document.visibilityState !== 'visible') return
+      syncing = true
+      try {
+        accessRevoked = !(await refreshDashboard())
+      } catch {
+        // Leave the current dashboard visible when a periodic update fails.
+      } finally {
+        syncing = false
+      }
+    }
+    const interval = window.setInterval(() => void syncData(), 60_000)
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void syncData()
+    }
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [refreshDashboard])
 
   const renderPendingPaymentCard = ({ expense, payment, approval }: (typeof visiblePendingPayments)[number], compact = false) => <article className={`panel request-card member-pending-payment ${compact ? 'compact-payment-card' : ''}`} key={expense.id + payment.memberId} data-payment-id={approval?.id}><span className={`avatar request-avatar ${payment.status === 'pendiente' ? 'mint' : 'peach'}`}>{memberAvatarContent(payment.memberId, payment.name)}</span><div className="request-content"><div className="request-title-line"><h2>{expense.title}</h2><b>{euro(payment.amount)}</b></div><p>{initialData.floor.role === 'admin' ? payment.status === 'pendiente' ? `${payment.name} indica que ha pagado este importe; confirma el pago cuando lo hayas comprobado.` : payment.status === 'rechazado' ? `${payment.name}: pago rechazado, pendiente de volver a indicar.` : `${payment.name}: todavía no ha indicado este pago.` : payment.status === 'pendiente' ? 'Has indicado que pagaste; espera a que la administración lo confirme.' : payment.status === 'rechazado' ? 'El pago no se confirmó. Puedes volver a indicarlo cuando lo hayas realizado.' : 'Aún no has indicado este pago.'}</p></div>{initialData.floor.role === 'admin' ? approval ? <div className="request-actions"><button className="reject-button" onClick={() => void decidePayment(approval.id, 'rechazado')}>Rechazar</button><button className="approve-button" onClick={() => void decidePayment(approval.id, 'confirmado')}><Check size={15}/> Confirmar pago</button></div> : payment.memberId === initialData.user.id ? <button className="paid-button" onClick={() => void markPaid(expense)}>Marcar mi parte pagada</button> : <span className="payment-state">{payment.status === 'rechazado' ? 'Pago rechazado' : 'Sin indicar'}</span> : payment.status === 'pendiente' ? <span className="payment-state">Pendiente de confirmar</span> : <button className="paid-button" onClick={() => void markPaid(expense)}>{payment.status === 'rechazado' ? 'Volver a marcar pagado' : 'Marcar mi parte pagada'}</button>}</article>
 
