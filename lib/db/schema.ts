@@ -66,6 +66,8 @@ export const notifications = pgTable('notificaciones', {
   userId: text('userId').notNull(),
   title: text('titulo').notNull(),
   message: text('mensaje').notNull(),
+  targetType: text('destinoTipo'),
+  targetId: text('destinoId'),
   read: boolean('leida').notNull().default(false),
   createdAt: timestamp('createdAt', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('notificaciones_user_idx').on(table.userId, table.createdAt)])

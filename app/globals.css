@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+﻿@import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
@@ -72,7 +72,7 @@
 .top-account-menu button:hover{background:#f5f7f4;color:#344d3a}
 .sidebar{overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}.sidebar>*{flex-shrink:0}
 
-/* Estado de pagos: el avance común queda visible antes de entrar al detalle. */
+/* Estado de pagos: el avance comÃºn queda visible antes de entrar al detalle. */
 .payment-status-banner{display:flex;align-items:center;justify-content:space-between;gap:22px;margin:0 0 15px;padding:16px 19px;background:linear-gradient(110deg,#fff 0%,#f7faf6 100%);transition:border-color .18s,transform .18s}
 .payment-status-banner:hover{border-color:#d6e1d4;transform:translateY(-1px)}
 .payment-status-copy{display:flex;align-items:center;gap:13px;min-width:0}
@@ -166,7 +166,7 @@ body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,
 @media(max-width:420px){.breadcrumb{gap:7px;font-size:10px}.top-actions{gap:9px}.period-label{font-size:10px}.welcome-row h1{font-size:25px}.spending-content{gap:10px;padding-inline:0}.donut-wrap{min-width:125px}.donut{width:112px;height:112px}.donut:before{width:80px;height:80px}.month-stats{grid-template-columns:1fr}.activity-item{gap:8px}.activity-copy b{max-width:150px}}
 @media(prefers-reduced-motion:reduce){.nav-link,.home-switcher,.summary-card,.panel,.primary-button,.upload-card-action,.payment-progress i{transition:none!important}}
 
-/* Gastos: controles y tabla con proporciones flexibles en cada tamaño. */
+/* Gastos: controles y tabla con proporciones flexibles en cada tamaÃ±o. */
 .page-content:has(.expenses-panel) .welcome-row{align-items:center;margin-bottom:25px}
 .page-content:has(.expenses-panel) .welcome-row h1{font-size:31px;letter-spacing:-1.2px}
 .page-content:has(.expenses-panel) .expenses-panel{padding:0 20px;background:#fff}
@@ -232,3 +232,5 @@ body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,
 .notification-actions{display:flex;align-items:center;gap:14px}.delete-notifications{display:inline-flex;align-items:center;gap:5px;color:#a35f52}.delete-notifications:disabled{opacity:.45;cursor:not-allowed}.utility-period{display:block;margin:5px 0 0 37px;color:#879187;font-size:9px;font-weight:500}.expense-mobile-payments .utility-period{margin:0 0 5px;color:#758175}
 .notification-delete-button{display:grid;flex:none;place-items:center;width:32px;height:32px;border:1px solid #f0dfdb;border-radius:8px;background:#fff8f6;color:#a35f52}.notification-delete-button:hover{background:#f8e9e5}.notification-row{touch-action:pan-y}.delete-notifications{padding:8px 11px;border:1px solid #edd9d5;border-radius:7px;background:#fff9f7}@media(max-width:620px){.notification-actions{align-items:flex-end;flex-direction:column;gap:6px}.notification-row{gap:8px;padding:14px 12px}.notification-delete-button{width:34px;height:34px}}
 .payment-due-reminder{display:block;margin-top:6px;color:#607962;font-size:10px;font-weight:650}
+
+.tip-card>div:nth-child(2){position:relative;z-index:1;min-width:0}.tip-decoration{display:none}.notification-row{cursor:pointer}.notification-row:focus-visible{outline:3px solid #a8c0a4;outline-offset:-3px}.notification-target-highlight{outline:2px solid #7c9b7d;outline-offset:-2px;animation:notification-focus 2.4s ease-out}@keyframes notification-focus{0%,55%{box-shadow:0 0 0 5px #83a58240}100%{box-shadow:0 0 0 0 transparent}}

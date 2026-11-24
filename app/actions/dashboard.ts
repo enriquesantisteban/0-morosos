@@ -278,15 +278,16 @@ export async function createExpense(input: ExpenseInput) {
     }
     if (context.membership.role !== 'admin' && floor.adminId !== user.id) {
       const proposal = { title: value.title, type: value.type, amount: value.amount, date: value.date, note: value.note || '', periodStart: value.periodStart || '', periodEnd: value.periodEnd || '', rentMonth: value.rentMonth || '', splitMode, splitValues, _newExpense: true }
-      await tx.insert(requests).values({ id: randomUUID(), floorId: floor.id, expenseId: id, sentBy: user.id, reason: 'Nuevo gasto', proposal, status: 'pendiente' })
+      const requestId = randomUUID()
+      await tx.insert(requests).values({ id: requestId, floorId: floor.id, expenseId: id, sentBy: user.id, reason: 'Nuevo gasto', proposal, status: 'pendiente' })
       const admins = await tx.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.role, 'admin')))
-      if (admins.length) await tx.insert(notifications).values(admins.map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nuevo gasto pendiente', message: `${value.title}: ${value.amount.toFixed(2)} €` })))
+      if (admins.length) await tx.insert(notifications).values(admins.map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nuevo gasto pendiente', message: `${value.title}: ${value.amount.toFixed(2)} €`, targetType: 'request', targetId: requestId })))
       return
     }
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'creado', next: value })
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'reparto', next: splitSnapshot })
     const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
-    const rows = recipients.filter((row) => row.userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nuevo gasto', message: `${value.title}: ${value.amount.toFixed(2)} €` }))
+    const rows = recipients.filter((row) => row.userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nuevo gasto', message: `${value.title}: ${value.amount.toFixed(2)} €`, targetType: 'expense', targetId: id }))
     if (rows.length) await tx.insert(notifications).values(rows)
   })
   revalidatePath('/')
@@ -321,7 +322,7 @@ export async function updateExpense(id: string, input: ExpenseInput) {
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'editado', previous, next })
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'reparto', next: { mode: splitMode, allocations: splitValues } })
     const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
-    const rows = recipients.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Gasto actualizado', message: value.title }))
+    const rows = recipients.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Gasto actualizado', message: value.title, targetType: 'expense', targetId: id }))
     if (rows.length) await tx.insert(notifications).values(rows)
   })
   revalidatePath('/')
@@ -355,7 +356,7 @@ export async function submitExpenseRequest(expenseId: string, reason: string, pr
   await db.transaction(async (tx) => {
     await tx.insert(requests).values({ id, floorId: floor.id, expenseId, sentBy: user.id, reason: reason.trim(), proposal: safeProposal, status: 'pendiente' })
     const admins = await tx.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.role, 'admin')))
-    if (admins.length) await tx.insert(notifications).values(admins.map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nueva solicitud de cambio', message: reason.trim() })))
+    if (admins.length) await tx.insert(notifications).values(admins.map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Nueva solicitud de cambio', message: reason.trim(), targetType: 'request', targetId: id })))
   })
   revalidatePath('/')
   return { id }
@@ -393,7 +394,7 @@ export async function resolveExpenseRequest(id: string, decision: 'aprobada' | '
     }
     if (decision === 'rechazada' && isNewExpense) await tx.delete(expenses).where(and(eq(expenses.id, pending.expenseId), eq(expenses.floorId, floor.id)))
     await tx.update(requests).set({ status: decision, resolvedBy: user.id, resolvedAt: new Date() }).where(and(eq(requests.id, id), eq(requests.floorId, floor.id), eq(requests.status, 'pendiente')))
-    await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: pending.sentBy, title: decision === 'aprobada' ? 'Solicitud aprobada' : 'Solicitud rechazada', message: pending.reason })
+    await tx.insert(notifications).values({ id: randomUUID(), floorId: floor.id, userId: pending.sentBy, title: decision === 'aprobada' ? 'Solicitud aprobada' : 'Solicitud rechazada', message: pending.reason, targetType: 'expense', targetId: pending.expenseId })
   })
   revalidatePath('/')
 }
@@ -448,9 +449,10 @@ export async function markExpensePaid(expenseId: string) {
     if (isAdmin) {
       await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_confirmado', next: { memberId: user.id, amount, direct: true } })
     } else {
-      await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId, actorId: user.id, action: 'pago_pendiente', next: { memberId: user.id, amount } })
+      const paymentId = randomUUID()
+      await tx.insert(history).values({ id: paymentId, floorId: floor.id, expenseId, actorId: user.id, action: 'pago_pendiente', next: { memberId: user.id, amount } })
       const admins = await tx.select({ userId: members.userId }).from(members).where(and(eq(members.floorId, floor.id), eq(members.role, 'admin')))
-      const rows = admins.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Pago pendiente de confirmar', message: `${user.name}: ${amount.toFixed(2)} € · ${expense.title}` }))
+      const rows = admins.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Pago pendiente de confirmar', message: `${user.name}: ${amount.toFixed(2)} € · ${expense.title}`, targetType: 'payment', targetId: paymentId }))
       if (rows.length) await tx.insert(notifications).values(rows)
     }
   })
@@ -552,6 +554,12 @@ export async function revertMemberExpensePaid(expenseId: string, memberId: strin
 export async function markNotificationsRead() {
   const { user, floor } = await getMembership()
   await db.update(notifications).set({ read: true }).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id)))
+  revalidatePath('/')
+}
+
+export async function markNotificationRead(id: string) {
+  const { user, floor } = await getMembership()
+  await db.update(notifications).set({ read: true }).where(and(eq(notifications.id, id), eq(notifications.floorId, floor.id), eq(notifications.userId, user.id)))
   revalidatePath('/')
 }
 

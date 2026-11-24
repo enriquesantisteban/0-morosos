@@ -134,10 +134,14 @@ CREATE TABLE IF NOT EXISTS "notificaciones" (
   "userId" text NOT NULL,
   "titulo" text NOT NULL,
   "mensaje" text NOT NULL,
+  "destinoTipo" text,
+  "destinoId" text,
   "leida" boolean NOT NULL DEFAULT false,
   "createdAt" timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS "notificaciones_user_idx" ON "notificaciones" ("userId", "createdAt");
+ALTER TABLE "notificaciones" ADD COLUMN IF NOT EXISTS "destinoTipo" text;
+ALTER TABLE "notificaciones" ADD COLUMN IF NOT EXISTS "destinoId" text;
 
 CREATE TABLE IF NOT EXISTS "suscripciones_push" (
   "id" text PRIMARY KEY NOT NULL,
