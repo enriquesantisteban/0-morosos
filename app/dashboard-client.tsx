@@ -669,6 +669,36 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   }, [])
 
   useEffect(() => {
+    let startX = -1
+    let startY = 0
+    const handleTouchStart = (event: TouchEvent) => {
+      if (window.innerWidth > 850 || event.touches.length !== 1) {
+        startX = -1
+        return
+      }
+      const touch = event.touches[0]
+      startX = touch.clientX
+      startY = touch.clientY
+    }
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (startX < 0 || !event.changedTouches.length) return
+      const touch = event.changedTouches[0]
+      const deltaX = touch.clientX - startX
+      const deltaY = touch.clientY - startY
+      const horizontalSwipe = Math.abs(deltaX) > 65 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4
+      if (horizontalSwipe && !mobileNav && startX <= 24 && deltaX > 0) setMobileNav(true)
+      if (horizontalSwipe && mobileNav && startX <= 300 && deltaX < 0) setMobileNav(false)
+      startX = -1
+    }
+    document.addEventListener('touchstart', handleTouchStart, { passive: true })
+    document.addEventListener('touchend', handleTouchEnd, { passive: true })
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart)
+      document.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [mobileNav])
+
+  useEffect(() => {
     let active = true
     let syncing = false
     let accessRevoked = false
