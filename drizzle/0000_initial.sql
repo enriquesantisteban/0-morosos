@@ -139,6 +139,28 @@ CREATE TABLE IF NOT EXISTS "notificaciones" (
 );
 CREATE INDEX IF NOT EXISTS "notificaciones_user_idx" ON "notificaciones" ("userId", "createdAt");
 
+CREATE TABLE IF NOT EXISTS "suscripciones_push" (
+  "id" text PRIMARY KEY NOT NULL,
+  "pisoId" text NOT NULL,
+  "userId" text NOT NULL,
+  "endpoint" text NOT NULL,
+  "p256dh" text NOT NULL,
+  "auth" text NOT NULL,
+  "recordatorioMes" text,
+  "createdAt" timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "suscripciones_push_endpoint_unique" ON "suscripciones_push" ("endpoint");
+CREATE INDEX IF NOT EXISTS "suscripciones_push_user_idx" ON "suscripciones_push" ("pisoId", "userId");
+
+CREATE TABLE IF NOT EXISTS "recordatorios_pago" (
+  "id" text PRIMARY KEY NOT NULL,
+  "pisoId" text NOT NULL,
+  "userId" text NOT NULL,
+  "mes" text NOT NULL,
+  "createdAt" timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "recordatorios_pago_month_user_unique" ON "recordatorios_pago" ("pisoId", "userId", "mes");
+
 CREATE TABLE IF NOT EXISTS "invitaciones" (
   "id" text PRIMARY KEY NOT NULL,
   "pisoId" text NOT NULL,

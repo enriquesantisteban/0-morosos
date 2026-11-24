@@ -127,6 +127,11 @@ EMAIL_FROM="0 morosos <cuentas@tu-dominio.com>"
 
 # Necesaria para las cargas de archivos en Vercel Blob
 BLOB_READ_WRITE_TOKEN=""
+
+# Recordatorios push mensuales en dispositivos
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=""
+VAPID_PRIVATE_KEY=""
+CRON_SECRET=""
 ```
 
 Usa una base de datos de desarrollo independiente de producción. Genera `BETTER_AUTH_SECRET` con un gestor de secretos o un generador criptográfico; no reutilices el ejemplo. En Vercel, configura las variables en **Project → Settings → Environment Variables** para los entornos que vayas a desplegar.
@@ -136,6 +141,8 @@ Usa una base de datos de desarrollo independiente de producción. Genera `BETTER
 **Correo:** configura una clave de Resend y un remitente permitido en Resend. El correo es necesario para los flujos de recuperación y verificación.
 
 **Archivos:** conecta un almacén Vercel Blob y configura su token para subir y servir los archivos privados que utiliza la aplicación.
+
+**Recordatorios de pago:** el día 1, el cron de `vercel.json` crea automáticamente una notificación en el centro de notificaciones de cada miembro y envía un correo si Resend está configurado. Obt?n `CRON_SECRET` ejecutando `pnpm generate:vapid` y config?ralo en Vercel. Ejecuta `pnpm db:migrate` para crear las tablas de control. Los avisos push del navegador son opcionales: tambi?n requieren configurar las claves VAPID que imprime ese comando y permiso en cada dispositivo; en iPhone, la webapp debe estar añadida a la pantalla de inicio.
 
 ### 3. Crear las tablas
 

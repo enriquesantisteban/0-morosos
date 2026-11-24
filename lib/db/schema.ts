@@ -1,4 +1,4 @@
-import { boolean, date, index, jsonb, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { boolean, date, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 
 export const floors = pgTable('pisos', {
   id: text('id').primaryKey(),
@@ -69,6 +69,25 @@ export const notifications = pgTable('notificaciones', {
   read: boolean('leida').notNull().default(false),
   createdAt: timestamp('createdAt', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('notificaciones_user_idx').on(table.userId, table.createdAt)])
+
+export const pushSubscriptions = pgTable('suscripciones_push', {
+  id: text('id').primaryKey(),
+  floorId: text('pisoId').notNull(),
+  userId: text('userId').notNull(),
+  endpoint: text('endpoint').notNull(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  reminderMonth: text('recordatorioMes'),
+  createdAt: timestamp('createdAt', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex('suscripciones_push_endpoint_unique').on(table.endpoint), index('suscripciones_push_user_idx').on(table.floorId, table.userId)])
+
+export const paymentReminders = pgTable('recordatorios_pago', {
+  id: text('id').primaryKey(),
+  floorId: text('pisoId').notNull(),
+  userId: text('userId').notNull(),
+  month: text('mes').notNull(),
+  createdAt: timestamp('createdAt', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex('recordatorios_pago_month_user_unique').on(table.floorId, table.userId, table.month)])
 
 export const invitations = pgTable('invitaciones', {
   id: text('id').primaryKey(),

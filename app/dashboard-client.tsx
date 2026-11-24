@@ -19,10 +19,18 @@ const categoryColors: Record<string, string> = { Alquiler: '#526c54', Luz: '#bd8
 const categoryColor = (type: string) => categoryColors[type] ?? '#8b938b'
 const displayDate = (value: string | Date) => new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
 const mapExpenses = (rows: DashboardPayload['expenses']): Expense[] => rows.map((row, index) => ({ ...row, date: String(row.date).slice(0, 10), initials: row.person.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase(), color: colors[index % colors.length] }))
+const madridDateParts = (date: Date) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date).map(({ type, value }) => [type, value])) as Record<string, string>
+const billingMonthFor = (date: Date) => {
+  const parts = madridDateParts(date)
+  const month = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1 + (Number(parts.day) > 15 ? 1 : 0), 1))
+  return `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, '0')}`
+}
+const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
+const decodeVapidKey = (key: string) => Uint8Array.from(atob(key.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(key.length / 4) * 4, '=')), (character) => character.charCodeAt(0))
 
 export default function DashboardClient({ initialData }: { initialData: DashboardPayload }) {
   const [page, setPage] = useState('Resumen')
-  const [selectedMonth, setSelectedMonth] = useState(() => { const today = new Date(); return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}` })
+  const [selectedMonth, setSelectedMonth] = useState(() => billingMonthFor(new Date()))
   const [floorName, setFloorName] = useState(initialData.floor.name)
   const [floorDescription, setFloorDescription] = useState(initialData.floor.description)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
@@ -49,6 +57,9 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   const [expandedExpenseId, setExpandedExpenseId] = useState<string | null>(null)
   const [mobileNav, setMobileNav] = useState(false)
   const [notice, setNotice] = useState('')
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushPermissionDenied, setPushPermissionDenied] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
@@ -84,11 +95,32 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   const chartMaximum = maxMonthly > 0 ? chartStep * 3 : 0
   const chartTicks = chartMaximum > 0 ? [chartMaximum, chartStep * 2, chartStep] : [0, 0, 0]
   const formatChartAmount = (amount: number) => `${new Intl.NumberFormat('es-ES', { maximumFractionDigits: amount < 10 ? 1 : 0 }).format(amount)} €`
-  const daysLeft = Math.max(0, new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5, 7)), 0).getDate() - (selectedMonth === new Date().toISOString().slice(0, 7) ? new Date().getDate() : 0))
+  const today = madridDateParts(new Date())
+  const daysLeft = Math.max(0, new Date(Date.UTC(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5, 7)), 0)).getUTCDate() - (selectedMonth === `${today.year}-${today.month}` ? Number(today.day) : 0))
   const categoryTotals = ['Alquiler', 'Luz', 'Agua', 'Basura', 'Comunidad', 'Internet', 'Otros'].map((type) => ({ type, amount: monthlyExpenses.filter((expense) => expense.type === type).reduce((sum, expense) => sum + expense.amount, 0) }))
   const largestCategory = [...categoryTotals].sort((a, b) => b.amount - a.amount)[0]
   const donutGradient = total > 0 ? (() => { let accumulated = 0; const segments = categoryTotals.filter((category) => category.amount > 0).map((category) => { const start = accumulated / total * 100; accumulated += category.amount; return `${categoryColor(category.type)} ${start}% ${accumulated / total * 100}%` }); return `conic-gradient(${segments.join(', ')})` })() : 'conic-gradient(#e9ece8 0 100%)'
   const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(''), 2800) }
+
+  useEffect(() => {
+    let previousDefaultMonth = billingMonthFor(new Date())
+    const timer = window.setInterval(() => {
+      const currentDefaultMonth = billingMonthFor(new Date())
+      if (currentDefaultMonth !== previousDefaultMonth) {
+        previousDefaultMonth = currentDefaultMonth
+        setSelectedMonth(currentDefaultMonth)
+      }
+    }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!vapidPublicKey || !('Notification' in window) || !('serviceWorker' in navigator)) return
+    setPushPermissionDenied(Notification.permission === 'denied')
+    void navigator.serviceWorker.getRegistration('/').then((registration) => registration?.pushManager.getSubscription()).then((subscription) => {
+      setPushEnabled(Boolean(subscription))
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     void authClient.listAccounts().then(({ data }) => {
@@ -113,9 +145,9 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   }, [])
   const selectedDate = new Date(`${selectedMonth}-01T12:00:00`)
   const monthName = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(selectedDate)
-  const currentYear = new Date().getFullYear()
+  const currentYear = Number(madridDateParts(new Date()).year)
   const oldestYear = Math.min(currentYear - 10, ...expenses.map((expense) => Number(expense.date.slice(0, 4))))
-  const yearOptions = Array.from(new Set([...Array.from({ length: currentYear - oldestYear + 1 }, (_, index) => currentYear - index), ...expenses.map((expense) => Number(expense.date.slice(0, 4)))] )).sort((a, b) => b - a)
+  const yearOptions = Array.from(new Set([...Array.from({ length: currentYear - oldestYear + 1 }, (_, index) => currentYear - index), Number(selectedMonth.slice(0, 4)), ...expenses.map((expense) => Number(expense.date.slice(0, 4)))] )).sort((a, b) => b - a)
 
   function exportCsv() {
     const rows = [['Concepto', 'Tipo', 'Fecha', 'Registrado por', 'Importe'], ...filtered.filter((expense) => !expense.pendingApproval && !expense.isPrivate).map((e) => [e.title, e.type, displayDate(e.date), e.person, e.amount.toFixed(2)])]
@@ -456,6 +488,40 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
     catch (error) { notify(error instanceof Error ? error.message : 'No se pudieron borrar las notificaciones') }
   }
 
+  async function enablePaymentReminders() {
+    if (!vapidPublicKey || !('Notification' in window) || !('serviceWorker' in navigator)) {
+      notify('Este navegador no admite los recordatorios del dispositivo.')
+      return
+    }
+    if (Notification.permission === 'denied') {
+      setPushPermissionDenied(true)
+      notify('Las notificaciones están bloqueadas. Actívalas en los permisos de este sitio.')
+      return
+    }
+    setPushBusy(true)
+    try {
+      const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
+      if (permission !== 'granted') {
+        setPushPermissionDenied(permission === 'denied')
+      notify('Permite las notificaciones si también quieres recibir avisos push en este dispositivo.')
+        return
+      }
+      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decodeVapidKey(vapidPublicKey) as BufferSource })
+      const response = await fetch('/api/recordatorios/suscripcion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(subscription.toJSON()) })
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}))
+        throw new Error(result.error || 'No se pudo activar el recordatorio.')
+      }
+      setPushEnabled(true)
+      notify('Recordatorio mensual activado en este dispositivo.')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo activar el recordatorio.')
+    } finally {
+      setPushBusy(false)
+    }
+  }
+
   async function readNotifications() {
     try {
       await markNotificationsRead()
@@ -536,7 +602,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
               <article className="summary-card"><div className="summary-top"><span className="summary-label">TU PARTE DEL MES</span><span className="card-icon green-icon"><Users size={17} /></span></div><div className="summary-value">{euro(personalMonthlyTotal)}</div><div className="summary-foot"><span className="quiet-text">Repartido entre {members.length}</span><span className="mini-avatars">{members.slice(0, 4).map((member, index) => <i key={member.id} className={`avatar ${colors[index % colors.length]}`}>{member.name.slice(0, 1).toUpperCase()}</i>)}</span></div></article>
               <article className="summary-card"><div className="summary-top"><span className="summary-label">GASTOS REGISTRADOS</span><span className="card-icon orange-icon"><FileText size={17} /></span></div><div className="summary-value">{monthlyExpenses.length.toString().padStart(2, '0')}<small>   este mes</small></div><div className="summary-foot"><span className="quiet-text">{latestExpenseDate ? `Último · ${displayDate(latestExpenseDate)}` : 'Todavía no hay gastos'}</span><span className="mini-avatars">{members.slice(0, 4).map((member, index) => <i key={member.id} className={`avatar ${colors[index % colors.length]}`}>{member.name.slice(0, 1).toUpperCase()}</i>)}</span></div></article>
             </section>
-            <section className="panel payment-status-banner" aria-label="Estado de pagos del piso"><div className="payment-status-copy"><span className="payment-status-icon"><CircleCheck size={18}/></span><div><span className="summary-label">PAGOS DEL PISO · {monthName.toUpperCase()}</span><h2>{paymentParts.length === 0 ? 'Aún no hay pagos registrados' : pendingParts === 0 ? 'Todo el piso está al día' : `${pendingParts} ${pendingParts === 1 ? 'pago pendiente' : 'pagos pendientes'}`}</h2><p>{paymentParts.length ? `${paidParts} de ${paymentParts.length} partes pagadas · ${paymentProgress}% completado` : 'Añade un gasto y cada miembro verá cuánto le corresponde.'}</p></div></div><div className="payment-status-action"><div className="payment-progress" role="progressbar" aria-label="Partes pagadas" aria-valuenow={paymentProgress} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${paymentProgress}%` }}/></div><button className="outline-button" onClick={() => setPage('Gastos')}>Revisar gastos <ArrowRight size={14}/></button></div></section>
+              <section className="panel payment-status-banner" aria-label="Estado de pagos del piso"><div className="payment-status-copy"><span className="payment-status-icon"><CircleCheck size={18}/></span><div><span className="summary-label">PAGOS DEL PISO · {monthName.toUpperCase()}</span><h2>{paymentParts.length === 0 ? 'Aún no hay pagos registrados' : pendingParts === 0 ? 'Todo el piso está al día' : `${pendingParts} ${pendingParts === 1 ? 'pago pendiente' : 'pagos pendientes'}`}</h2><p>{paymentParts.length ? `${paidParts} de ${paymentParts.length} partes pagadas · ${paymentProgress}% completado` : 'Añade un gasto y cada miembro verá cuánto le corresponde.'}</p><small className="payment-due-reminder">Plazo de pago de {monthName}: del día 1 al 5.</small></div></div><div className="payment-status-action"><div className="payment-progress" role="progressbar" aria-label="Partes pagadas" aria-valuenow={paymentProgress} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${paymentProgress}%` }}/></div>{vapidPublicKey && <button className="outline-button" onClick={() => void enablePaymentReminders()} disabled={pushEnabled || pushBusy || pushPermissionDenied}><Bell size={14}/>{pushEnabled ? 'Aviso push activado' : pushBusy ? 'Activando…' : pushPermissionDenied ? 'Notificaciones bloqueadas' : 'Añadir push opcional'}</button>}<button className="outline-button" onClick={() => setPage('Gastos')}>Revisar gastos <ArrowRight size={14}/></button></div></section>
             <section className="dashboard-grid">
               <article className="panel spending-panel"><div className="panel-heading"><div><h2>Cómo se reparte</h2><p>Desglose por categoría</p></div><select className="select-button" aria-label="Mes de Cómo se reparte" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>{yearOptions.flatMap((year) => Array.from({ length: 12 }, (_, index) => `${year}-${String(12 - index).padStart(2, '0')}`)).map((month) => <option key={month} value={month}>{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date(`${month}-01T12:00:00`))}</option>)}</select></div><div className="spending-content"><div className="donut-wrap"><div className="donut" style={{ background: donutGradient }}><div className="donut-center"><b>{euro(total)}</b><span>en total</span></div></div></div><div className="category-legend">{categoryTotals.filter((category) => category.amount > 0).map((category) => <div key={category.type}><i className="legend-dot" style={{ backgroundColor: categoryColor(category.type) }}/><span>{category.type}</span><b>{euro(category.amount)}</b></div>)}</div></div><div className="panel-divider"/><div className="month-trend"><div className="trend-title"><span>Gasto mensual · piso y privados</span><span className="trend-legend"><i /> Piso <i className="legend-private" /> Privado</span></div><div className="bar-chart" aria-label="Gráfico de gastos mensuales"><div className="chart-guides">{chartTicks.map((tick, index) => <i key={index}>{formatChartAmount(tick)}</i>)}</div>{monthlySeries.map((amount, index) => { const privateAmount = monthlyPrivateSeries[index]; const combined = amount + privateAmount; const floorShare = combined > 0 ? amount / combined * 100 : 0; const isSelected = index === Number(selectedMonth.slice(5, 7)) - 1; const background = privateAmount > 0 ? 'linear-gradient(to top, ' + (isSelected ? '#49654e' : '#dfe7de') + ' ' + floorShare + '%, #d4bfa9 ' + floorShare + '%)' : isSelected ? '#49654e' : '#dfe7de'; return <div className={'chart-bar' + (isSelected ? ' chart-bar-current' : '')} key={index}><span style={{ height: (chartMaximum > 0 ? combined / chartMaximum * 100 : 0) + '%', background }} /><small>{monthLabels[index]}</small></div> })}</div></div></article>
               <article className="panel activity-panel"><div className="panel-heading"><div><h2>Actividad reciente</h2><p>Lo último que ha pasado en el piso</p></div><button className="text-link" onClick={() => setPage('Gastos')}>Ver todo <ArrowRight size={14} /></button></div><div className="activity-list">{expenses.length === 0 ? <div className="activity-empty"><span className="empty-check"><Plus size={17}/></span><b>Sube la primera factura</b><span>Todos podrán consultar el importe y su parte desde aquí.</span><button className="text-link" onClick={openExpenseForm}>Añadir gasto <ArrowRight size={14}/></button></div> : expenses.slice(0, 4).map((expense) => <div className="activity-item" key={expense.id}><span className={`category-icon ${expense.type.toLowerCase()}`}><CategoryIcon type={expense.type} /></span><div className="activity-copy"><b>{expense.title}{expense.isPrivate && <small className="private-expense-badge">Privado</small>}</b><span>{expense.person} · {displayDate(expense.date)}</span></div><strong>{euro(expense.amount)}</strong></div>)}</div><button className="activity-footer" onClick={() => setPage('Gastos')}>Ver todos los gastos <ArrowRight size={14} /></button></article>
