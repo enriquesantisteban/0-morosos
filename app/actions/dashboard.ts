@@ -554,3 +554,9 @@ export async function markNotificationsRead() {
   await db.update(notifications).set({ read: true }).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id)))
   revalidatePath('/')
 }
+
+export async function deleteNotifications() {
+  const { user, floor } = await getMembership()
+  await db.delete(notifications).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id)))
+  revalidatePath('/')
+}

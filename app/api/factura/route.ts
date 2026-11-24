@@ -54,6 +54,13 @@ export async function GET(request: NextRequest) {
   const [expense] = await db.select({ isPrivate: expenses.isPrivate, createdBy: expenses.createdBy }).from(expenses).where(and(eq(expenses.floorId, floorId), eq(expenses.invoicePath, pathname))).limit(1)
   if (!expense || (expense.isPrivate && expense.createdBy !== session.user.id)) return NextResponse.json({ error: 'Factura no encontrada.' }, { status: 404 })
 
+  if (request.nextUrl.searchParams.get('raw') !== '1') {
+    const rawUrl = `/api/factura?path=${encodeURIComponent(pathname)}&raw=1`
+    const isImage = /\.(jpg|jpeg|png|webp)$/i.test(pathname)
+    const content = isImage ? `<img src="${rawUrl}" alt="Factura" />` : `<iframe src="${rawUrl}" title="Factura en PDF"></iframe>`
+    return new NextResponse(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Factura</title><style>*{box-sizing:border-box}body{margin:0;background:#202420;color:#fff;font:14px Arial,sans-serif}.toolbar{position:fixed;z-index:2;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:#202420eF}.toolbar button{padding:9px 14px;border:0;border-radius:6px;background:#fff;color:#26372a;font-weight:700;cursor:pointer}.viewer{height:100dvh;padding-top:54px;display:grid;place-items:center}iframe{width:100%;height:100%;border:0;background:white}img{max-width:100%;max-height:calc(100dvh - 70px);object-fit:contain}</style></head><body><header class="toolbar"><span>Factura</span><button onclick="window.close()">Cerrar ventana</button></header><main class="viewer">${content}</main></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-cache' } })
+  }
+
   try {
     const result = await get(pathname, { access: 'private', ifNoneMatch: request.headers.get('if-none-match') ?? undefined })
     if (!result) return NextResponse.json({ error: 'Factura no encontrada.' }, { status: 404 })
