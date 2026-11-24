@@ -1,5 +1,9 @@
 import { readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { loadEnvFile } from 'node:process'
 import { Pool } from 'pg'
+
+if (!process.env.DATABASE_URL && existsSync('.env.local')) loadEnvFile('.env.local')
 
 const connectionString = process.env.DATABASE_URL
 if (!connectionString) {
