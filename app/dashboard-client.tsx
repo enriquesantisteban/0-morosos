@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Camera, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, LogOut, Menu, MoreHorizontal, Pencil, Plus, Search, Share2, Sparkles, Trash2, Undo2, Upload, UserRound, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
+import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Camera, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, LogOut, Menu, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Share2, Sparkles, Trash2, Undo2, Upload, UserRound, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
 import { createExpense, createFloorInvitation, deleteExpense, deleteNotification, deleteNotifications, getDashboardData, markExpensePaid, markMemberExpensePaid, markNotificationRead, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, revertMemberExpensePaid, submitExpenseRequest, updateContractVisibility, updateExpense, updateFloorDescription, updateFloorName, updateOwnProfileName } from '@/app/actions/dashboard'
 import type { getDashboardData as getDashboardDataType } from '@/app/actions/dashboard'
 import { authClient } from '@/lib/auth-client'
@@ -54,6 +54,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   const [expenses, setExpenses] = useState<Expense[]>(mapExpenses(initialData.expenses))
   const [members, setMembers] = useState(initialData.members)
   const [notifications, setNotifications] = useState(initialData.notifications)
+  const [refreshing, setRefreshing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('Todos')
@@ -209,6 +210,19 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
     setContractExists(fresh.contractExists)
     setContractVisibleTo(fresh.contract?.visibleTo || [])
     setRequests(fresh.requests.map((request, index) => ({ ...request, title: request.expenseTitle || 'Gasto eliminado', detail: request.reason === "Nuevo gasto" ? `${request.expenseTitle || "Gasto"} · ${euro(Number(request.proposal.amount))}` : request.reason, name: request.sender, initials: request.sender.split(' ').map((part: string) => part[0]).join('').slice(0, 2).toUpperCase(), color: colors[index % colors.length], time: new Date(request.createdAt).toLocaleDateString('es-ES') })))
+  }
+
+  async function reloadDashboard() {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await refreshDashboard()
+      notify('Datos actualizados')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudieron actualizar los datos')
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   async function addExpense(event: React.FormEvent<HTMLFormElement>) {
@@ -621,7 +635,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
       {mobileNav && <button className="mobile-backdrop" aria-label="Cerrar menú" onClick={() => setMobileNav(false)} />}
 
       <section className="main-area">
-        <header className="topbar"><button className="mobile-menu" aria-label="Abrir menú" onClick={() => setMobileNav(true)}><Menu /></button><div className="breadcrumb"><span>{floorName}</span><span className="crumb-slash">/</span><b>{page}</b></div><div className="top-actions"><span className="period-label">{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date())}</span><button className="icon-button notification-button" aria-label="Notificaciones" onClick={() => setPage('Notificaciones')}><Bell size={19} />{notifications.some((item) => !item.read) && <i />}</button><div className="top-profile-menu-wrap"><button className="avatar top-avatar lilac top-avatar-button" aria-label="Abrir menú de cuenta" aria-expanded={topAccountMenuOpen} onClick={() => setTopAccountMenuOpen((open) => !open)}>{profileImageUrl ? <img src={profileImageUrl} alt=""/> : profileName.slice(0, 2).toUpperCase()}</button>{topAccountMenuOpen && <div className="top-account-menu"><button onClick={() => void signOut()}><LogOut size={15}/> Cerrar sesión</button></div>}</div></div></header>
+        <header className="topbar"><button className="mobile-menu" aria-label="Abrir menú" onClick={() => setMobileNav(true)}><Menu /></button><div className="breadcrumb"><span>{floorName}</span><span className="crumb-slash">/</span><b>{page}</b></div><div className="top-actions"><span className="period-label">{new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date())}</span><button className="icon-button notification-button" aria-label="Notificaciones" title="Notificaciones" onClick={() => setPage('Notificaciones')}><Bell size={19} />{notifications.some((item) => !item.read) && <i />}</button><button className="icon-button refresh-button" aria-label="Recargar datos" title="Recargar datos" onClick={() => void reloadDashboard()} disabled={refreshing}><RefreshCw className={refreshing ? 'refresh-spinning' : ''} size={17}/></button><div className="top-profile-menu-wrap"><button className="avatar top-avatar lilac top-avatar-button" aria-label="Abrir menú de cuenta" aria-expanded={topAccountMenuOpen} onClick={() => setTopAccountMenuOpen((open) => !open)}>{profileImageUrl ? <img src={profileImageUrl} alt=""/> : profileName.slice(0, 2).toUpperCase()}</button>{topAccountMenuOpen && <div className="top-account-menu"><button onClick={() => void signOut()}><LogOut size={15}/> Cerrar sesión</button></div>}</div></div></header>
         <div className="page-content">
           {page === 'Contrato' && <>
             <div className="welcome-row"><div><div className="eyebrow"><span className="status-dot" /> DOCUMENTACIÓN DEL PISO</div><h1>Contrato</h1><p className="page-subtitle">Consulta el contrato de alquiler y los permisos para compartirlo.</p></div></div>
