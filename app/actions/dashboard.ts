@@ -560,3 +560,9 @@ export async function deleteNotifications() {
   await db.delete(notifications).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id)))
   revalidatePath('/')
 }
+
+export async function deleteNotification(id: string) {
+  const { user, floor } = await getMembership()
+  await db.delete(notifications).where(and(eq(notifications.id, id), eq(notifications.floorId, floor.id), eq(notifications.userId, user.id)))
+  revalidatePath('/')
+}

@@ -85,13 +85,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const access = await getAccess()
   if (!access) return NextResponse.json({ error: 'Inicia sesión para continuar.' }, { status: 401 })
   const [contract] = await db.select().from(floorContracts).where(eq(floorContracts.floorId, access.floor.id)).limit(1)
   if (!contract) return NextResponse.json({ error: 'El piso todavía no tiene un contrato.' }, { status: 404 })
   if (!access.isAdmin && !contract.visibleTo.includes(access.user.id)) {
     return NextResponse.json({ error: 'La administración no ha compartido el contrato contigo.' }, { status: 403 })
+  }
+
+  if (request.nextUrl.searchParams.get('raw') !== '1') {
+    return new NextResponse('<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Contrato</title><style>*{box-sizing:border-box}body{margin:0;background:#202420;color:#fff;font:14px Arial,sans-serif}.toolbar{position:fixed;z-index:2;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:#202420ef}.toolbar button{padding:10px 16px;border:0;border-radius:7px;background:#fff;color:#26372a;font-size:14px;font-weight:700;cursor:pointer}.viewer{height:100dvh;padding-top:54px}iframe{width:100%;height:100%;border:0;background:white}</style></head><body><header class="toolbar"><span>Contrato</span><button onclick="window.close()">Cerrar ventana</button></header><main class="viewer"><iframe src="/api/contrato?raw=1" title="Contrato de alquiler"></iframe></main></body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-cache' } })
   }
 
   try {
