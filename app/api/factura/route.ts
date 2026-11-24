@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
   const floorId = await getFloorId()
   if (!floorId) return NextResponse.json({ error: 'Debes iniciar sesión.' }, { status: 401 })
   const session = await auth.api.getSession({ headers: await headers() })
-  if (!session?.user) return NextResponse.json({ error: 'Debes iniciar sesiÃ³n.' }, { status: 401 })
+  if (!session?.user) return NextResponse.json({ error: 'Debes iniciar sesión.' }, { status: 401 })
   const pathname = request.nextUrl.searchParams.get('path')
   if (!pathname || !pathname.startsWith(`facturas/${floorId}/`) || pathname.includes('..')) return NextResponse.json({ error: 'Factura no encontrada.' }, { status: 404 })
   const [expense] = await db.select({ isPrivate: expenses.isPrivate, createdBy: expenses.createdBy }).from(expenses).where(and(eq(expenses.floorId, floorId), eq(expenses.invoicePath, pathname))).limit(1)
