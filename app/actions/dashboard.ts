@@ -116,7 +116,7 @@ export async function getDashboardData() {
   const { user, membership, floor } = await getMembership()
   const [expenseRows, memberRows, requestRows, notificationRows, pendingAdds, paymentRows, floorInfoRows, splitRows] = await Promise.all([
     db.select({ expense: expenses, creator: appUsers.name }).from(expenses).leftJoin(appUsers, eq(expenses.createdBy, appUsers.id)).where(eq(expenses.floorId, floor.id)).orderBy(desc(expenses.date)),
-    db.select({ membership: members, username: appUsers.username }).from(members).leftJoin(appUsers, eq(members.userId, appUsers.id)).where(eq(members.floorId, floor.id)).orderBy(desc(members.createdAt)),
+    db.select({ membership: members, image: appUsers.image }).from(members).leftJoin(appUsers, eq(members.userId, appUsers.id)).where(eq(members.floorId, floor.id)).orderBy(desc(members.createdAt)),
     db.select({ request: requests, sender: appUsers.name, expenseTitle: expenses.title }).from(requests).leftJoin(appUsers, eq(requests.sentBy, appUsers.id)).leftJoin(expenses, eq(requests.expenseId, expenses.id)).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'))).orderBy(desc(requests.createdAt)),
     db.select().from(notifications).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, user.id))).orderBy(desc(notifications.createdAt)),
     db.select({ expenseId: requests.expenseId, proposal: requests.proposal }).from(requests).where(and(eq(requests.floorId, floor.id), eq(requests.status, 'pendiente'), sql`${requests.proposal}->>'_newExpense' = 'true'`)),
@@ -175,7 +175,7 @@ export async function getDashboardData() {
       const personalPayment = paymentsForExpense?.get(user.id)
       return { ...expense, amount: Number(expense.amount), person: creator || 'Miembro del piso', pendingApproval: pendingAdds.some((request) => request.expenseId === expense.id), paymentStatus: (personalPayment?.status || 'ninguno') as 'ninguno' | 'sin_pagar' | 'pendiente' | 'confirmado' | 'rechazado', personalShare: personalPayment?.amount || shareAmounts[user.id] || 0, splitMode, splitValues: splitPayload?.allocations || Object.fromEntries(memberRows.map(({ membership: member }) => [member.userId, 1])), payments: paymentByMember }
     }),
-    members: memberRows.map(({ membership: item, username }) => ({ ...item, username })),
+    members: memberRows.map(({ membership: item, image }) => ({ ...item, image })),
     requests: requestRows.map(({ request, sender, expenseTitle }) => ({ ...request, sender: sender || 'Miembro del piso', expenseTitle })),
     paymentApprovals,
     notifications: notificationRows,
