@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, ArrowDownToLine, ArrowDownUp, ArrowRight, Bell, Camera, Check, ChevronDown, Circle, CircleCheck, CircleHelp, CircleX, Clock3, Copy, CreditCard, Droplets, FileText, Filter, House, LayoutDashboard, LogOut, Menu, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Share2, Sparkles, Trash2, Undo2, Upload, UserRound, Users, Wallet, Wifi, X, Zap } from 'lucide-react'
-import { createExpense, createFloorInvitation, deleteExpense, deleteNotification, deleteNotifications, getDashboardData, markExpensePaid, markMemberExpensePaid, markNotificationRead, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, revertMemberExpensePaid, submitExpenseRequest, updateContractVisibility, updateExpense, updateFloorDescription, updateFloorName, updateOwnProfileName } from '@/app/actions/dashboard'
+import { createExpense, createFloorInvitation, deleteExpense, deleteNotification, deleteNotifications, getDashboardData, getRemovedFloorName, markExpensePaid, markMemberExpensePaid, markNotificationRead, markNotificationsRead, removeFloorMember, resolveExpenseRequest, resolvePayment, revertMemberExpensePaid, submitExpenseRequest, updateContractVisibility, updateExpense, updateFloorDescription, updateFloorName, updateOwnProfileName } from '@/app/actions/dashboard'
 import type { getDashboardData as getDashboardDataType } from '@/app/actions/dashboard'
 import { authClient } from '@/lib/auth-client'
 import { getAuthErrorMessage } from '@/lib/auth-errors'
+import RemovedMemberNotice from './removed-member-notice'
 
 type DashboardPayload = Awaited<ReturnType<typeof getDashboardDataType>>
 type Expense = { id: string; title: string; type: string; date: string; person: string; amount: number; initials: string; color: string; createdBy: string; isPrivate: boolean; periodStart: string | null; periodEnd: string | null; rentMonth: string | null; note: string | null; invoicePath: string | null; invoiceName: string | null; pendingApproval: boolean; paymentStatus: 'ninguno' | 'sin_pagar' | 'pendiente' | 'confirmado' | 'rechazado'; personalShare: number; splitMode: 'igual' | 'partes' | 'importes'; splitValues: Record<string, number>; payments: { memberId: string; name: string; status: 'sin_pagar' | 'pendiente' | 'confirmado' | 'rechazado'; amount: number; parts: number }[] }
@@ -33,6 +34,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   const [selectedMonth, setSelectedMonth] = useState(() => billingMonthFor(new Date()))
   const [selectedPaymentMemberId, setSelectedPaymentMemberId] = useState<string | null>(null)
   const [floorName, setFloorName] = useState(initialData.floor.name)
+  const [removedFloorName, setRemovedFloorName] = useState<string | null>(null)
   const [floorDescription, setFloorDescription] = useState(initialData.floor.description)
   const [showDescriptionEditor, setShowDescriptionEditor] = useState(false)
   const [descriptionDraft, setDescriptionDraft] = useState(initialData.floor.description || '')
@@ -217,6 +219,11 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   }
 
   async function refreshDashboard() {
+    const removedName = await getRemovedFloorName()
+    if (removedName) {
+      setRemovedFloorName(removedName)
+      return
+    }
     const fresh = await getDashboardData()
     setExpenses(mapExpenses(fresh.expenses))
     setMembers(fresh.members)
@@ -601,6 +608,35 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
     return () => window.clearTimeout(timer)
   }, [focusTarget, page, filtered, requests, paymentApprovals])
 
+  useEffect(() => {
+    let active = true
+    let checking = false
+    let removedDetected = false
+    const checkMembership = async () => {
+      if (checking || removedDetected || document.visibilityState !== 'visible') return
+      checking = true
+      try {
+        const removedName = await getRemovedFloorName()
+        if (active && removedName) {
+          removedDetected = true
+          setRemovedFloorName(removedName)
+        }
+      } catch {
+        // Keep the current page usable if a temporary connection error occurs.
+      } finally {
+        checking = false
+      }
+    }
+    void checkMembership()
+    const interval = window.setInterval(() => void checkMembership(), 5000)
+    document.addEventListener('visibilitychange', checkMembership)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', checkMembership)
+    }
+  }, [])
+
   const renderPendingPaymentCard = ({ expense, payment, approval }: (typeof visiblePendingPayments)[number], compact = false) => <article className={`panel request-card member-pending-payment ${compact ? 'compact-payment-card' : ''}`} key={expense.id + payment.memberId} data-payment-id={approval?.id}><span className={`avatar request-avatar ${payment.status === 'pendiente' ? 'mint' : 'peach'}`}>{memberAvatarContent(payment.memberId, payment.name)}</span><div className="request-content"><div className="request-title-line"><h2>{expense.title}</h2><b>{euro(payment.amount)}</b></div><p>{initialData.floor.role === 'admin' ? payment.status === 'pendiente' ? `${payment.name} indica que ha pagado este importe; confirma el pago cuando lo hayas comprobado.` : payment.status === 'rechazado' ? `${payment.name}: pago rechazado, pendiente de volver a indicar.` : `${payment.name}: todavía no ha indicado este pago.` : payment.status === 'pendiente' ? 'Has indicado que pagaste; espera a que la administración lo confirme.' : payment.status === 'rechazado' ? 'El pago no se confirmó. Puedes volver a indicarlo cuando lo hayas realizado.' : 'Aún no has indicado este pago.'}</p></div>{initialData.floor.role === 'admin' ? approval ? <div className="request-actions"><button className="reject-button" onClick={() => void decidePayment(approval.id, 'rechazado')}>Rechazar</button><button className="approve-button" onClick={() => void decidePayment(approval.id, 'confirmado')}><Check size={15}/> Confirmar pago</button></div> : payment.memberId === initialData.user.id ? <button className="paid-button" onClick={() => void markPaid(expense)}>Marcar mi parte pagada</button> : <span className="payment-state">{payment.status === 'rechazado' ? 'Pago rechazado' : 'Sin indicar'}</span> : payment.status === 'pendiente' ? <span className="payment-state">Pendiente de confirmar</span> : <button className="paid-button" onClick={() => void markPaid(expense)}>{payment.status === 'rechazado' ? 'Volver a marcar pagado' : 'Marcar mi parte pagada'}</button>}</article>
 
   async function enablePaymentReminders() {
@@ -646,6 +682,8 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
       notify('No se pudieron actualizar las notificaciones')
     }
   }
+
+  if (removedFloorName) return <RemovedMemberNotice floorName={removedFloorName}/>
 
   return (
     <main className="app-shell">
