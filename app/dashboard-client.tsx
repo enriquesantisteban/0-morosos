@@ -746,7 +746,7 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
   return (
     <main className="app-shell">
       <aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
-        <a className="brand" href="#inicio" onClick={(e) => { e.preventDefault(); setPage('Resumen') }}><span className="brand-mark sidebar-brand-mark"><img src="/icon.svg" alt="" /></span><span>0 morosos<span className="brand-dot">.</span></span></a>
+        <a className="brand" href="#inicio" onClick={(e) => { e.preventDefault(); setPage('Resumen') }}><span className="brand-mark sidebar-brand-mark"><img src="/apple-icon.png" alt="" /></span><span>0 morosos<span className="brand-dot">.</span></span></a>
         <div className="workspace-label">TU ESPACIO</div>
         <button className="home-switcher" onClick={async () => { if (initialData.floor.role !== 'admin') return; const name = window.prompt('Nombre del piso', floorName); if (name === null) return; try { await updateFloorName(name); setFloorName(name.trim()); notify('Nombre del piso actualizado') } catch (error) { notify(error instanceof Error ? error.message : 'No se pudo cambiar el nombre') } }}><span className="home-emoji"><House size={16} /></span><span className="home-copy"><b>{floorName}</b><small>{members.length} compañeros · editar</small></span><ChevronDown size={15} /></button>
         <nav className="side-nav" aria-label="Navegación principal">
