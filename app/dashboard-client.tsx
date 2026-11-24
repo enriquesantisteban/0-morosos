@@ -238,6 +238,10 @@ export default function DashboardClient({ initialData }: { initialData: Dashboar
       await refreshDashboard()
       notify('Datos actualizados')
     } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Has sido eliminado de ')) {
+        window.location.reload()
+        return
+      }
       notify(error instanceof Error ? error.message : 'No se pudieron actualizar los datos')
     } finally {
       setRefreshing(false)

@@ -68,6 +68,21 @@ async function getSessionUser() {
   return session.user
 }
 
+async function findRemovedFloorName(userId: string) {
+  const [removal] = await db.select({ next: history.next }).from(history)
+    .where(and(eq(history.action, 'member_removed'), sql`${history.next}->>'removedUserId' = ${userId}`))
+    .orderBy(desc(history.createdAt)).limit(1)
+  const next = removal?.next as Record<string, unknown> | null
+  return typeof next?.floorName === 'string' ? next.floorName : null
+}
+
+export async function getRemovedFloorName() {
+  const user = await getSessionUser()
+  const [membership] = await db.select({ id: members.id }).from(members).where(eq(members.userId, user.id)).limit(1)
+  if (membership) return null
+  return findRemovedFloorName(user.id)
+}
+
 async function getMembership() {
   const user = await getSessionUser()
   const [existing] = await db.select().from(members).where(eq(members.userId, user.id)).limit(1)
@@ -75,6 +90,9 @@ async function getMembership() {
     const floor = await getFloor(existing.floorId)
     return { user, membership: existing, floor }
   }
+
+  const removedFloorName = await findRemovedFloorName(user.id)
+  if (removedFloorName) throw new Error(`Has sido eliminado de ${removedFloorName}.`)
 
   const floorId = randomUUID()
   const floorName = 'Mi piso'
@@ -222,6 +240,7 @@ export async function removeFloorMember(memberId: string) {
   if (!target) throw new Error('No encontramos a esa persona en tu piso.')
   if (target.userId === user.id || target.role === 'admin') throw new Error('No puedes eliminar a quien administra el piso.')
   await db.transaction(async (tx) => {
+    await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: '__member_removed__', actorId: user.id, action: 'member_removed', next: { removedUserId: target.userId, floorName: floor.name } })
     await tx.delete(members).where(and(eq(members.id, memberId), eq(members.floorId, floor.id), eq(members.userId, target.userId)))
     await tx.delete(notifications).where(and(eq(notifications.floorId, floor.id), eq(notifications.userId, target.userId)))
   })
