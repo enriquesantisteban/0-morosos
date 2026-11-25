@@ -7,8 +7,9 @@ export const metadata: Metadata = {
   description: 'Gestiona los gastos compartidos de tu piso de forma sencilla, transparente y sin perseguir a nadie.',
   generator: '0 morosos',
   icons: {
-    icon: '/apple-icon.png',
-    apple: '/apple-icon.png',
+    icon: [{ url: '/apple-icon.png?v=2', type: 'image/png', sizes: '512x512' }],
+    shortcut: '/apple-icon.png?v=2',
+    apple: [{ url: '/apple-icon.png?v=2', sizes: '512x512' }],
   },
 }
 
