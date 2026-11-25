@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, House } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { authClient } from '@/lib/auth-client'
 import { getAuthErrorMessage } from '@/lib/auth-errors'
 
@@ -38,5 +38,5 @@ export default function RecoverPasswordPage() {
     }
   }
 
-  return <main className="auth-reset-page"><section className="auth-reset-card"><Link href="/acceso" className="brand"><span className="brand-mark"><House size={18}/></span><span>0 morosos<span className="brand-dot">.</span></span></Link><span className="auth-eyebrow">RECUPERAR ACCESO</span><h1>Restablece tu contraseña</h1><p>Escribe el correo que añadiste al crear tu cuenta y te enviaremos un enlace.</p><form onSubmit={submit} className="auth-form" noValidate><label>Correo electrónico<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="tu@correo.com"/></label>{error && <div className="auth-error" role="alert">{error}</div>}{message && <div className="auth-success" role="status">{message}</div>}<button className="auth-submit" type="submit" disabled={loading}>{loading ? 'Enviando…' : 'Enviar enlace de recuperación'} <ArrowRight size={16}/></button></form><Link href="/acceso" className="auth-back-link"><ArrowLeft size={14}/> Volver al inicio de sesión</Link></section></main>
+  return <main className="auth-reset-page"><section className="auth-reset-card"><Link href="/acceso" className="brand"><span className="brand-mark"><img src="/apple-icon.png" alt="" /></span><span>0 morosos<span className="brand-dot">.</span></span></Link><span className="auth-eyebrow">RECUPERAR ACCESO</span><h1>Restablece tu contraseña</h1><p>Escribe el correo que añadiste al crear tu cuenta y te enviaremos un enlace.</p><form onSubmit={submit} className="auth-form" noValidate><label>Correo electrónico<input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="tu@correo.com"/></label>{error && <div className="auth-error" role="alert">{error}</div>}{message && <div className="auth-success" role="status">{message}</div>}<button className="auth-submit" type="submit" disabled={loading}>{loading ? 'Enviando…' : 'Enviar enlace de recuperación'} <ArrowRight size={16}/></button></form><Link href="/acceso" className="auth-back-link"><ArrowLeft size={14}/> Volver al inicio de sesión</Link></section></main>
 }

@@ -3,8 +3,8 @@ self.addEventListener('push', (event) => {
   try { payload = event.data ? event.data.json() : {} } catch {}
   event.waitUntil(self.registration.showNotification(payload.title || '0 morosos', {
     body: payload.body || 'Tienes un recordatorio del piso.',
-    icon: '/icon-dark-32x32-1.png',
-    badge: '/icon-dark-32x32-1.png',
+    icon: '/apple-icon.png',
+    badge: '/apple-icon.png',
     tag: payload.tag || 'recordatorio-piso',
     data: { url: payload.url || '/' },
   }))
