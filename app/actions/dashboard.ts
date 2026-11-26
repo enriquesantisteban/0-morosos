@@ -9,7 +9,7 @@ import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 
-const allowedTypes = ['Alquiler', 'Luz', 'Agua', 'Basura', 'Comunidad', 'Internet', 'Otros'] as const
+const allowedTypes = ['Alquiler', 'Luz', 'Agua', 'Basura', 'Comunidad', 'Internet', 'Compras', 'Otros'] as const
 
 type ExpenseInput = {
   title: string
@@ -314,15 +314,15 @@ export async function createExpense(input: ExpenseInput) {
 }
 
 export async function updateExpense(id: string, input: ExpenseInput) {
-  const { user, floor } = await requireAdmin()
+  const { user, membership, floor } = await getMembership()
   const value = validateExpense(input)
   const memberRows = await db.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
   const splitMode = input.splitMode || 'igual'
-  const splitValues = validateSplit(value.amount, memberRows.map((member) => member.userId), splitMode, input.splitValues)
   if (value.invoicePath && (!value.invoicePath.startsWith(`facturas/${floor.id}/`) || value.invoicePath.includes('..'))) throw new Error('La factura no pertenece a este piso.')
   const [previous] = await db.select().from(expenses).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id))).limit(1)
   if (!previous) throw new Error('No encontramos ese gasto en tu piso.')
-  if (previous.isPrivate && previous.createdBy !== user.id) throw new Error('No encontramos ese gasto en tu piso.')
+  if (previous.isPrivate ? previous.createdBy !== user.id : membership.role !== 'admin' && floor.adminId !== user.id) throw new Error('No encontramos ese gasto en tu piso.')
+  const splitValues = previous.isPrivate ? {} : validateSplit(value.amount, memberRows.map((member) => member.userId), splitMode, input.splitValues)
   const next = {
     title: value.title,
     type: value.type,
@@ -339,25 +339,29 @@ export async function updateExpense(id: string, input: ExpenseInput) {
   await db.transaction(async (tx) => {
     await tx.update(expenses).set(next).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id)))
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'editado', previous, next })
-    await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'reparto', next: { mode: splitMode, allocations: splitValues } })
-    const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
-    const rows = recipients.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Gasto actualizado', message: value.title, targetType: 'expense', targetId: id }))
-    if (rows.length) await tx.insert(notifications).values(rows)
+    if (!previous.isPrivate) {
+      await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'reparto', next: { mode: splitMode, allocations: splitValues } })
+      const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
+      const rows = recipients.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Gasto actualizado', message: value.title, targetType: 'expense', targetId: id }))
+      if (rows.length) await tx.insert(notifications).values(rows)
+    }
   })
   revalidatePath('/')
 }
 
 export async function deleteExpense(id: string) {
-  const { user, floor } = await requireAdmin()
+  const { user, membership, floor } = await getMembership()
   const [previous] = await db.select().from(expenses).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id))).limit(1)
   if (!previous) throw new Error('No encontramos ese gasto en tu piso.')
-  if (previous.isPrivate && previous.createdBy !== user.id) throw new Error('No encontramos ese gasto en tu piso.')
+  if (previous.isPrivate ? previous.createdBy !== user.id : membership.role !== 'admin' && floor.adminId !== user.id) throw new Error('No encontramos ese gasto en tu piso.')
   await db.transaction(async (tx) => {
     await tx.insert(history).values({ id: randomUUID(), floorId: floor.id, expenseId: id, actorId: user.id, action: 'eliminado', previous, next: null })
     await tx.delete(expenses).where(and(eq(expenses.id, id), eq(expenses.floorId, floor.id)))
-    const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
-    const rows = recipients.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Gasto eliminado', message: previous.title }))
-    if (rows.length) await tx.insert(notifications).values(rows)
+    if (!previous.isPrivate) {
+      const recipients = await tx.select({ userId: members.userId }).from(members).where(eq(members.floorId, floor.id))
+      const rows = recipients.filter(({ userId }) => userId !== user.id).map(({ userId }) => ({ id: randomUUID(), floorId: floor.id, userId, title: 'Gasto eliminado', message: previous.title }))
+      if (rows.length) await tx.insert(notifications).values(rows)
+    }
   })
   if (previous.invoicePath) await del(previous.invoicePath).catch(() => undefined)
   revalidatePath('/')
