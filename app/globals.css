@@ -345,3 +345,36 @@ body:has(.modal-backdrop){overflow:hidden}.modal-backdrop{overflow-x:hidden;over
 .split-amount-summary .split-summary-remaining{background:#f0f6ef}
 .split-summary-invalid .split-summary-total,.split-summary-invalid .split-summary-remaining{background:#fff6f4}
 @media(min-width:621px){.split-members-parts .split-participant-row{grid-template-columns:minmax(0,1fr) auto minmax(94px,auto)}.split-members-parts .split-participant-share{grid-column:3;grid-row:1}}
+@media(min-width:621px){
+  .split-members-igual .equal-split-summary{grid-column:1/-1;width:100%}
+  .split-members-igual .split-preview{min-width:0}
+  .expenses-table-wrap{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+  .expenses-table tbody.swipe-expense-container{position:static!important;display:table-row-group!important;overflow:visible!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;isolation:auto!important;contain:none!important}
+  .expenses-table tbody.swipe-expense-container>tr.swipe-action-layer{display:none!important}
+  .expenses-table tbody.swipe-expense-container>tr.swipe-card-row{position:static!important;display:table-row!important;width:auto;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:none!important;transition:none!important;will-change:auto}
+  .expenses-table tbody.swipe-expense-container>tr.swipe-card-row>td{background:transparent}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table{min-width:900px;table-layout:fixed}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table th:first-child{width:27%}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table th:nth-child(2){width:12%}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table th:nth-child(3){width:12%}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table th:nth-child(4){width:16%}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table th:nth-child(5){width:13%}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table th:last-child{width:20%}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table td{overflow-wrap:anywhere}
+  .historical-expenses-panel .expenses-table th:last-child{width:90px}
+  .historical-expenses-panel .expenses-table td[data-label="Acciones"]{white-space:nowrap}
+}
+
+@media(min-width:621px){
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table{min-width:1080px}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table th:last-child{width:240px}
+  .page-content:has(.expenses-panel:not(.historical-expenses-panel)) .expenses-table td[data-label="Acciones"]{min-width:240px;white-space:normal}
+  .historical-expenses-panel .expenses-table{min-width:820px;table-layout:fixed}
+  .historical-expenses-panel .expenses-table th:nth-child(1){width:34%}
+  .historical-expenses-panel .expenses-table th:nth-child(2){width:15%}
+  .historical-expenses-panel .expenses-table th:nth-child(3){width:18%}
+  .historical-expenses-panel .expenses-table th:nth-child(4){width:17%;text-align:right}
+  .historical-expenses-panel .expenses-table th:nth-child(5){width:16%}
+  .historical-expenses-panel .expenses-table td:nth-child(4){text-align:right;font-variant-numeric:tabular-nums}
+  .historical-expenses-panel .expenses-table td[data-label="Acciones"]{text-align:center}
+}

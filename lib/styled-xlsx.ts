@@ -35,7 +35,7 @@ function zipStored(files: { name: string; content: string }[]) {
     const localView = new DataView(local.buffer)
     localView.setUint32(0, 0x04034b50, true)
     localView.setUint16(4, 20, true)
-    localView.setUint16(6, 0, true)
+    localView.setUint16(6, 0x800, true)
     localView.setUint16(8, 0, true)
     localView.setUint16(10, 0, true)
     localView.setUint16(12, 0x21, true)
@@ -53,7 +53,7 @@ function zipStored(files: { name: string; content: string }[]) {
     centralView.setUint32(0, 0x02014b50, true)
     centralView.setUint16(4, 20, true)
     centralView.setUint16(6, 20, true)
-    centralView.setUint16(8, 0, true)
+    centralView.setUint16(8, 0x800, true)
     centralView.setUint16(10, 0, true)
     centralView.setUint16(12, 0, true)
     centralView.setUint16(14, 0x21, true)
@@ -109,7 +109,11 @@ export function createStyledXlsx(headers: string[], rows: CellValue[][], total: 
   const lastDataRow = Math.max(headerIndex, rows.length + headerIndex)
   const headerRow = `<row r="${headerIndex}">${headers.map((header, index) => inlineCell(`${columnName(index)}${headerIndex}`, header, 1)).join('')}</row>`
   const totalCells = `<row r="${totalRow}">${headers.map((_, index) => index === 0 ? `<c r="A${totalRow}" s="6" t="inlineStr"><is><t>TOTAL DEL PERIODO</t></is></c>` : index === totalColumnIndex ? numberCell(`${columnName(index)}${totalRow}`, total, 7) : `<c r="${columnName(index)}${totalRow}" s="6"/>`).join('')}</row>`
-  const columns = headers.map((header, index) => `<col min="${index + 1}" max="${index + 1}" width="${index === 0 ? 17 : Math.max(13, Math.min(30, header.length + 3))}" customWidth="1"/>`).join('')
+  const columns = headers.map((header, index) => {
+    const contentLength = Math.max(header.length, ...rows.map((row) => String(row[index] ?? '').length))
+    const width = Math.max(index === 0 ? 17 : 13, Math.min(42, contentLength + 3))
+    return `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`
+  }).join('')
   const titleRow = title ? `<row r="1">${inlineCell('A1', title, 8)}</row>` : ''
   const titleMerge = title ? `<mergeCell ref="A1:${columnName(headers.length - 1)}1"/>` : ''
   const freezeRows = title ? 2 : 1
