@@ -262,17 +262,17 @@ body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,
 .category-icon.compras{background:#f2efe7;color:#a17b3f}
 @media(max-width:620px){.swipe-delete-action{z-index:3;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .16s ease,visibility .16s ease}.expenses-table tbody tr.swipe-open .swipe-delete-action{opacity:1;visibility:visible;pointer-events:auto}.expenses-table tbody tr.swipe-open .swipe-delete-action:focus-visible{opacity:1;visibility:visible}}
 @media(max-width:620px){
-  .expenses-table tbody.swipe-expense-container{display:block!important;position:relative;overflow:hidden!important;margin:0 0 10px;padding:0;border:1px solid #e8ece7;border-radius:11px;background:#b85e53;touch-action:pan-y}
+  .expenses-table tbody.swipe-expense-container{display:block!important;position:relative;overflow:hidden!important;margin:0 0 10px;padding:0;border:0;border-radius:12px;background:#b85e53;touch-action:pan-y}
   .expenses-panel:has(.swipe-expense-container){overflow:visible}
   .expenses-table tbody.swipe-expense-container>tr.swipe-action-layer{position:absolute!important;inset:0;z-index:0;display:block!important;overflow:hidden;padding:0!important;border:0!important;background:#b85e53!important;transform:none!important;transition:none!important}
   .expenses-table tbody.swipe-expense-container>tr.swipe-action-layer>td{position:absolute;inset:0;display:flex!important;align-items:center;justify-content:flex-end;padding:0 12px!important;border:0!important}
-  .expenses-table tbody.swipe-expense-container .swipe-delete-action{position:static!important;display:grid;place-items:center;width:44px;height:44px;transform:none!important;border:0;border-radius:9px;background:transparent;color:#fff;box-shadow:none;opacity:1;visibility:visible;pointer-events:auto}
-  .expenses-table tbody.swipe-expense-container>tr.swipe-card-row{position:relative;z-index:1;display:grid;overflow:hidden;width:100%;margin:0;padding:3px 10px;border:0;border-radius:10px;background:#fff;touch-action:pan-y;user-select:none;-webkit-user-select:none;will-change:transform}
+  .expenses-table tbody.swipe-expense-container .swipe-delete-action{position:static!important;display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:9px;background:transparent;color:#fff;box-shadow:none;opacity:1;visibility:visible;pointer-events:auto}
+  .expenses-table tbody.swipe-expense-container>tr.swipe-card-row{position:relative;z-index:1;display:grid;overflow:hidden;width:100%;margin:0;padding:3px 10px;border:0;border-radius:12px;background-color:#fff;touch-action:pan-y;user-select:none;-webkit-user-select:none;will-change:transform}
   .historical-expenses-panel .expenses-table tbody.swipe-expense-container>tr.swipe-card-row{grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:8px 10px}
 }
-.expenses-table tbody.swipe-expense-container{position:relative;display:block;overflow:hidden;margin:0 0 8px;border-radius:10px;background:#b85e53}
+.expenses-table tbody.swipe-expense-container{position:relative;display:block;overflow:hidden;margin:0 0 8px;border-radius:12px;background:#b85e53}
 .expenses-table tbody.swipe-expense-container>tr.swipe-action-layer{position:absolute;inset:0;z-index:0;display:block;overflow:hidden;background:#b85e53}
 .expenses-table tbody.swipe-expense-container>tr.swipe-action-layer>td{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding:0 12px;border:0}
 .expenses-table tbody.swipe-expense-container .swipe-delete-action{position:static;display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:9px;background:transparent;color:#fff;box-shadow:none;opacity:1;visibility:visible;pointer-events:auto}
-.expenses-table tbody.swipe-expense-container>tr.swipe-card-row{position:relative;z-index:1;display:table;width:100%;table-layout:fixed;background:#fff;touch-action:pan-y;user-select:none;-webkit-user-select:none;will-change:transform}
+.expenses-table tbody.swipe-expense-container>tr.swipe-card-row{position:relative;z-index:1;display:table;width:100%;table-layout:fixed;border-radius:12px;background-color:#fff;touch-action:pan-y;user-select:none;-webkit-user-select:none;will-change:transform}
 @media(max-width:620px){.expenses-table tbody.swipe-expense-container>tr.swipe-card-row{display:grid!important}.historical-expenses-panel .expenses-table tbody.swipe-expense-container>tr.swipe-card-row{grid-template-columns:minmax(0,1fr) auto!important}}
