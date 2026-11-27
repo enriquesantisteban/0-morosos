@@ -406,3 +406,25 @@ body:has(.modal-backdrop){overflow:hidden}.modal-backdrop{overflow-x:hidden;over
   .historical-expenses-panel .expenses-table td:nth-child(4){text-align:right;font-variant-numeric:tabular-nums}
   .historical-expenses-panel .expenses-table td[data-label="Acciones"]{text-align:center}
 }
+
+@media(min-width:621px){
+  .expenses-panel:not(.historical-expenses-panel) .expenses-table tbody.swipe-expense-container>tr.swipe-card-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.25fr) minmax(0,.9fr) 150px}
+  .expenses-panel:not(.historical-expenses-panel) .expenses-table tbody.swipe-expense-container .swipe-card-row.mobile-expanded>td:first-child::before{display:none;content:none}
+  .expenses-panel:not(.historical-expenses-panel) .expenses-table tbody.swipe-expense-container .swipe-card-row.mobile-expanded>td[data-label="Acciones"]{grid-column:5;grid-row:2;flex-flow:row wrap;align-items:center;align-content:flex-start;justify-content:flex-end;gap:8px;padding:12px 2px 8px 14px;border-top:0;border-left:1px solid #edf0ec}
+  .expenses-panel:not(.historical-expenses-panel) .expenses-table tbody.swipe-expense-container .swipe-card-row.mobile-expanded>td[data-label="Acciones"]::before{display:none}
+  .expenses-panel:not(.historical-expenses-panel) .expenses-table tbody.swipe-expense-container .swipe-card-row.mobile-expanded>td[data-label="Acciones"] .payment-state{width:100%;text-align:right}
+  .expenses-panel:not(.historical-expenses-panel) .expenses-table tbody.swipe-expense-container .swipe-card-row.mobile-expanded>td[data-label="Acciones"] .row-more{width:36px;height:36px;border:1px solid #e6ebe5;border-radius:9px;background:#fff;color:#627363}
+  .expenses-panel:not(.historical-expenses-panel) .expenses-table tbody.swipe-expense-container .swipe-card-row.mobile-expanded>td[data-label="Acciones"] .row-more:hover{border-color:#cbd9c8;background:#f5f8f3;color:#3f6045}
+  .expenses-panel:not(.historical-expenses-panel) .expense-mobile-payments{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:9px;margin-top:12px;padding-top:12px}
+  .expenses-panel:not(.historical-expenses-panel) .expense-mobile-payments .payment-member{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;gap:6px 12px;min-width:0;margin:0;padding:11px 12px;border:1px solid #e6ebe5;border-radius:10px;background:#fafbf9}
+  .expenses-panel:not(.historical-expenses-panel) .expense-mobile-payments .payment-member>b{grid-column:1;grid-row:1;min-width:0;overflow:hidden;color:#354337;font-size:12px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}
+  .expenses-panel:not(.historical-expenses-panel) .expense-mobile-payments .payment-member>span.member-share-amount{grid-column:2;grid-row:1;color:#3e5141;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .expenses-panel:not(.historical-expenses-panel) .expense-mobile-payments .payment-member>span.member-payment-status{grid-column:1;grid-row:2;color:#838e83;font-size:10px;font-weight:550;text-align:left}
+  .expenses-panel:not(.historical-expenses-panel) .expense-mobile-payments .payment-member .admin-payment-toggle{grid-column:2;grid-row:2;justify-self:end;min-height:29px;margin:0;padding-inline:11px}
+}
+@media(min-width:621px) and (max-width:900px){
+  .expenses-panel:not(.historical-expenses-panel) .expenses-table tbody.swipe-expense-container .swipe-card-row.mobile-expanded>td:not(:first-child){grid-column:span 2}
+  .expenses-panel:not(.historical-expenses-panel) .expenses-table tbody.swipe-expense-container .swipe-card-row.mobile-expanded>td[data-label="Acciones"]{grid-column:1/-1;grid-row:auto;align-items:center;padding:10px 4px 2px;border-top:1px solid #edf0ec;border-left:0}
+}
+
+@media(min-width:621px){.expenses-panel:not(.historical-expenses-panel) .expense-mobile-payments .payment-member>b{font-size:14px;font-weight:700}.expenses-panel:not(.historical-expenses-panel) .expense-mobile-payments .payment-member>span.member-share-amount{font-size:13px}.expenses-panel:not(.historical-expenses-panel) .expense-mobile-payments .payment-member>span.member-payment-status{font-size:11px}}

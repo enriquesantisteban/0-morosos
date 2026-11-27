@@ -1,6 +1,11 @@
 type CellValue = string | number
 
-const xmlEscape = (value: string) => value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[character]!)
+const xmlEscape = (value: string) => Array.from(value, (character) => {
+  const escaped = ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' } as Record<string, string>)[character]
+  if (escaped) return escaped
+  const codePoint = character.codePointAt(0)!
+  return codePoint > 0x7e ? `&#x${codePoint.toString(16)};` : character
+}).join('')
 const concatBytes = (parts: Uint8Array[]) => {
   const output = new Uint8Array(parts.reduce((length, part) => length + part.length, 0))
   let offset = 0
