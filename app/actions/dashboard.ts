@@ -124,7 +124,9 @@ function validateExpense(input: ExpenseInput) {
   if (!allowedTypes.includes(input.type as typeof allowedTypes[number])) throw new Error('Selecciona un tipo de gasto válido.')
   if (!Number.isFinite(input.amount) || input.amount <= 0 || input.amount > 10000000) throw new Error('Introduce un importe válido.')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || Number.isNaN(Date.parse(input.date))) throw new Error('La fecha no es válida.')
-  if (['Luz', 'Agua'].includes(input.type) && (!input.periodStart || !input.periodEnd || input.periodStart > input.periodEnd)) throw new Error('Indica un periodo válido para la factura.')
+  if (input.periodStart && (!/^\d{4}-\d{2}-\d{2}$/.test(input.periodStart) || Number.isNaN(Date.parse(input.periodStart)))) throw new Error('La fecha de inicio del periodo no es válida.')
+  if (input.periodEnd && (!/^\d{4}-\d{2}-\d{2}$/.test(input.periodEnd) || Number.isNaN(Date.parse(input.periodEnd)))) throw new Error('La fecha de fin del periodo no es válida.')
+  if (input.periodStart && input.periodEnd && input.periodStart > input.periodEnd) throw new Error('El inicio del periodo debe ser anterior al fin.')
   if ((input.note || '').length > 240) throw new Error('La nota no puede superar los 240 caracteres.')
   if (input.isPrivate !== undefined && typeof input.isPrivate !== 'boolean') throw new Error('La privacidad del gasto no es válida.')
   return { ...input, title }
