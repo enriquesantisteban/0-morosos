@@ -19,7 +19,7 @@ const navItems = [
 const euro = (n: number) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n)
 const shortMemberName = (name: string) => {
   const parts = name.trim().split(/\s+/).filter(Boolean)
-  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1].charAt(0)}.` : name
+  return parts.length > 1 ? `${parts[0]} ${parts[1].charAt(0)}.` : name
 }
 const categoryColors: Record<string, string> = { Alquiler: '#526c54', Luz: '#bd835c', Agua: '#6986a2', Basura: '#857898', Comunidad: '#b49a68', Internet: '#7187a0', Otros: '#6d896e' }
 const categoryColor = (type: string) => categoryColors[type] ?? '#8b938b'
