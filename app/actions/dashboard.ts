@@ -119,7 +119,7 @@ async function requireAdmin() {
 }
 
 function validateExpense(input: ExpenseInput) {
-  const title = input.title.trim()
+  const title = (input.title || '').trim() || input.type
   if (!title || title.length > 80) throw new Error('El concepto debe tener entre 1 y 80 caracteres.')
   if (!allowedTypes.includes(input.type as typeof allowedTypes[number])) throw new Error('Selecciona un tipo de gasto válido.')
   if (!Number.isFinite(input.amount) || input.amount <= 0 || input.amount > 10000000) throw new Error('Introduce un importe válido.')
