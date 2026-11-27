@@ -960,19 +960,19 @@ function SwipeExpenseRow({ children, columns, enabled, className, onDelete }: { 
     if (!start) return
     const autoDelete = !cancelled && start.horizontal && offset <= -(start.width * deleteRatio)
     setDragging(false)
-    setIconProgress(autoDelete ? 1 : 0)
+    const reveal = !cancelled && start.horizontal && offset < -Math.min(80, start.width * 0.35)
+    setIconProgress(autoDelete ? 1 : reveal ? Math.max(0.35, Math.min(0.85, Math.abs(offset) / (start.width * deleteRatio))) : 0)
     suppressClick.current = start.horizontal
     if (start.horizontal) window.setTimeout(() => { suppressClick.current = false }, 450)
     if (autoDelete) {
       void completeDelete(true, start.width)
       return
     }
-    const reveal = !cancelled && start.horizontal && offset < -Math.min(80, start.width * 0.35)
     setOffset(reveal ? -actionOffset : 0)
   }
 
   return <tbody ref={containerRef} className={`swipe-expense-container ${enabled ? 'swipe-enabled' : ''} ${collapsing ? 'swipe-collapsing' : ''}`} style={containerHeight === null ? undefined : { maxHeight: collapsing ? 0 : containerHeight, opacity: collapsing ? 0 : 1, marginBottom: collapsing ? 0 : undefined, transition: 'max-height .2s ease, opacity .16s ease, margin .2s ease' }}>
-    {enabled && <tr className="swipe-action-layer"><td colSpan={columns}><button className="swipe-delete-action" aria-label="Eliminar gasto" style={{ transform: `scale(${1 + iconProgress * 0.34})`, opacity: 0.65 + iconProgress * 0.35 }} onClick={() => void completeDelete(false, 0)}><Trash2 size={18}/></button></td></tr>}
+    {enabled && <tr className="swipe-action-layer" style={{ opacity: iconProgress, transition: dragging ? 'none' : 'opacity .16s ease' }}><td colSpan={columns}><button className="swipe-delete-action" aria-label="Eliminar gasto" style={{ transform: `scale(${1 + iconProgress * 0.34})`, opacity: 0.65 + iconProgress * 0.35 }} onClick={() => void completeDelete(false, 0)}><Trash2 size={18}/></button></td></tr>}
     <tr className={`swipe-card-row ${className || ''}`} style={enabled ? { transform: `translateX(${offset}px)`, transition: dragging ? 'none' : 'transform .22s cubic-bezier(.2,.75,.25,1)' } : undefined}
       onPointerDown={(event) => {
         if (!enabled || collapsing || (event.pointerType === 'mouse' && event.button !== 0) || (event.target instanceof Element && event.target.closest('button,a,input,select'))) return

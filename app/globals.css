@@ -276,3 +276,8 @@ body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,
 .expenses-table tbody.swipe-expense-container .swipe-delete-action{position:static;display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:9px;background:transparent;color:#fff;box-shadow:none;opacity:1;visibility:visible;pointer-events:auto}
 .expenses-table tbody.swipe-expense-container>tr.swipe-card-row{position:relative;z-index:1;display:table;width:100%;table-layout:fixed;border-radius:12px;background-color:#fff;touch-action:pan-y;user-select:none;-webkit-user-select:none;will-change:transform}
 @media(max-width:620px){.expenses-table tbody.swipe-expense-container>tr.swipe-card-row{display:grid!important}.historical-expenses-panel .expenses-table tbody.swipe-expense-container>tr.swipe-card-row{grid-template-columns:minmax(0,1fr) auto!important}}
+.expenses-table tbody.swipe-expense-container{overflow:hidden!important;isolation:isolate;contain:paint;border-radius:12px;background-color:#fff!important}
+.expenses-table tbody.swipe-expense-container>tr.swipe-action-layer{overflow:hidden;border-radius:12px;background-color:#c45b50!important}
+.expenses-table tbody.swipe-expense-container>tr.swipe-action-layer>td{overflow:hidden;border-radius:12px;background-color:#c45b50!important}
+.expenses-table tbody.swipe-expense-container>tr.swipe-card-row{inset:auto;margin:0!important;overflow:hidden;border:0!important;border-radius:12px;background-color:#fff!important;box-shadow:none!important}
+.expenses-table tbody.swipe-expense-container>tr.swipe-card-row>td{background-color:#fff}
